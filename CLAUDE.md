@@ -49,7 +49,7 @@ behind a flag; default mode replays cached outputs from data/llm_cache/.
 config/forms.yaml        field definitions + validation rules per form
 config/dependencies.yaml field -> return line -> workpaper/approval map
 data/synthetic/          synthetic inputs (labelled SYNTHETIC in every file)
-data/llm_cache/          recorded LLM extraction outputs (labelled MOCKED)
+data/llm_cache/          hand-written stand-ins for LLM outputs (labelled MOCKED); real ones are *.live.json
 returnguard/models.py    pydantic schemas
 returnguard/validate.py  identity + prior-value + field checks
 returnguard/impact.py    dependency walk -> stale approvals

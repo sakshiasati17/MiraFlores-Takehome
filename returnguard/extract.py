@@ -3,12 +3,16 @@
 AI suggests -> code verifies -> decide.py decides -> a CPA decides what to do.
 
 Modes
-- cached (default): replay a recorded output from data/llm_cache/<case_id>.json. Those files are labelled
-  MOCKED ("mocked": true). No network, no API key, no cost. Every test runs in this mode.
+- cached (default): replay data/llm_cache/<case_id>.json. Those files are labelled
+  "MOCKED: hand-written stand-in for an LLM output, not a real model call" ("mocked": true, "source":
+  "hand-written", "model": null). No network, no API key, no cost. Every test runs in this mode.
 - live (optional): only when env RETURNGUARD_LLM=live AND ANTHROPIC_API_KEY is set. One call with the fixed
-  prompt below; the SDK (requirements-llm.txt, NOT requirements.txt) is imported inside the function.
-  The result is saved to data/llm_cache/<case_id>.live.json labelled LIVE (the MOCKED recordings are never
-  overwritten). A missing cache file with live mode off is an error, never a guess.
+  prompt below (default model claude-haiku-5-5, override with RETURNGUARD_LLM_MODEL); the SDK
+  (requirements-llm.txt, NOT requirements.txt) is imported inside the function. The real output is recorded to
+  data/llm_cache/<case_id>.live.json labelled LIVE (the hand-written MOCKED files are never overwritten).
+- use_live_cache=True: replay data/llm_cache/<case_id>.live.json (a real recorded live output, labelled LIVE)
+  when it exists, else fall back to the MOCKED file. No API call.
+A missing cache file with live mode off is an error, never a guess.
 
 Verification (verify_extraction)
 - For each extracted box, find the ONE text line for that box (box id at the start of the line + the box
@@ -41,7 +45,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "data" / "llm_cache"
 
 PROMPT_VERSION = "extract-v1"
-DEFAULT_LIVE_MODEL = "claude-opus-5-5"  # override with env RETURNGUARD_LLM_MODEL
+DEFAULT_LIVE_MODEL = "claude-haiku-5-5"  # fast, low-cost extraction; override with env RETURNGUARD_LLM_MODEL
 
 # ---------------------------------------------------------------------------
 # The fixed extraction schema (JSON Schema). Nothing else: no status, no decision, no advice.
@@ -120,9 +124,11 @@ class ExtractionResult:
     corrected: bool = False
     payer_or_employer_tin: str = ""
     tax_year: int = 0
-    model: str = ""
+    model: str = ""  # "" for hand-written MOCKED files ("model": null)
     prompt_version: str = ""
     cache_path: str = ""
+    source: str = ""  # "hand-written" (MOCKED) | "live" (real model output)
+    replayed_live: bool = False  # True when a recorded .live.json was replayed (no API call this run)
 
 
 @dataclass(frozen=True)
@@ -184,7 +190,7 @@ def live_enabled() -> bool:
     return os.environ.get("RETURNGUARD_LLM", "").strip().lower() == "live" and bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
-def _result(record: dict[str, Any], path: Path) -> ExtractionResult:
+def _result(record: dict[str, Any], path: Path, replayed_live: bool = False) -> ExtractionResult:
     ex = check_schema(record.get("extraction"))
     if record.get("mocked") is True:
         label = "MOCKED"
@@ -200,18 +206,25 @@ def _result(record: dict[str, Any], path: Path) -> ExtractionResult:
         corrected=ex["corrected"],
         payer_or_employer_tin=ex["payer_or_employer_tin"],
         tax_year=ex["tax_year"],
-        model=str(record.get("model", "")),
-        prompt_version=str(record.get("prompt_version", "")),
+        model=str(record.get("model") or ""),
+        prompt_version=str(record.get("prompt_version") or ""),
         cache_path=str(path),
+        source=str(record.get("source") or ("live" if label == "LIVE" else "hand-written")),
+        replayed_live=replayed_live,
     )
 
 
 def _call_live(text: str, model: str) -> dict[str, Any]:
     """ONE call to the Claude API. Imported lazily so the core install never needs the SDK.
 
-    Note: current Claude models reject `temperature` (and forced tool_choice), so neither is sent; the
-    output is pinned by the fixed prompt + schema, checked by check_schema(), and then verified against
-    the source text by code. Nothing here can set a status.
+    Parameters left out on purpose, because Claude Haiku 5.5 (the default model) returns HTTP 400 for them:
+      - temperature / top_p / top_k (non-default sampling values are rejected), so no "temperature 0";
+      - thinking={"type": "enabled", "budget_tokens": N} (manual thinking budgets are rejected);
+      - an assistant prefill (e.g. starting the answer with "{").
+    Sent: model, max_tokens, messages, and output_config effort "low" (supported; keeps thinking short for a
+    copy-the-form task). Haiku 5.5 thinks by default and thinking counts toward max_tokens, so max_tokens is
+    generous and only `text` blocks are read. The output is pinned by the fixed prompt + schema, checked by
+    check_schema(), then verified against the source text by code. Nothing here can set a status.
     """
     try:
         import anthropic  # noqa: PLC0415  (lazy on purpose: optional dependency)
@@ -219,9 +232,16 @@ def _call_live(text: str, model: str) -> dict[str, Any]:
         raise ExtractionError("live mode needs the optional SDK: pip install -r requirements-llm.txt") from exc
     client = anthropic.Anthropic()
     prompt = EXTRACTION_PROMPT.format(schema=json.dumps(EXTRACTION_SCHEMA, indent=2), text=text)
-    response = client.messages.create(model=model, max_tokens=2000, messages=[{"role": "user", "content": prompt}])
+    response = client.messages.create(
+        model=model,
+        max_tokens=16000,
+        output_config={"effort": "low"},
+        messages=[{"role": "user", "content": prompt}],
+    )
     if response.stop_reason == "refusal":
         raise ExtractionError("the model declined to extract this form")
+    if response.stop_reason == "max_tokens":
+        raise ExtractionError("live output was cut off at max_tokens; not using a partial extraction")
     out = "".join(b.text for b in response.content if b.type == "text").strip()
     out = re.sub(r"^```(?:json)?\s*|\s*```$", "", out)
     try:
@@ -230,10 +250,12 @@ def _call_live(text: str, model: str) -> dict[str, Any]:
         raise ExtractionError(f"live output is not JSON: {out[:200]!r}") from exc
 
 
-def extract(text: str, case_id: str, mode: Optional[str] = None, cache_dir: Path = CACHE_DIR) -> ExtractionResult:
+def extract(text: str, case_id: str, mode: Optional[str] = None, cache_dir: Path = CACHE_DIR,
+            use_live_cache: bool = False) -> ExtractionResult:
     """Structured fields from form text.
 
-    mode None / "cached": replay data/llm_cache/<case_id>.json (MOCKED). Default, free, offline.
+    mode None / "cached": replay data/llm_cache/<case_id>.json (MOCKED, hand-written). Default, free, offline.
+        With use_live_cache=True, replay data/llm_cache/<case_id>.live.json instead when it exists (LIVE).
     mode "live": requires RETURNGUARD_LLM=live and ANTHROPIC_API_KEY (else ExtractionError).
     With mode None and live enabled by the environment, live is used.
     """
@@ -246,7 +268,8 @@ def extract(text: str, case_id: str, mode: Optional[str] = None, cache_dir: Path
         extraction = check_schema(_call_live(text, model))
         record = {
             "live": True,
-            "_label": "LIVE: real LLM output recorded by ReturnGuard (synthetic input only)",
+            "_label": "LIVE: real model output recorded by ReturnGuard (synthetic input only)",
+            "source": "live",
             "synthetic": True,
             "case_id": case_id,
             "model": model,
@@ -260,11 +283,17 @@ def extract(text: str, case_id: str, mode: Optional[str] = None, cache_dir: Path
         return _result(record, path)
     if mode != "cached":
         raise ExtractionError(f"unknown extraction mode {mode!r} (use 'cached' or 'live')")
+    live_path = cache_dir / f"{case_id}.live.json"
+    if use_live_cache and live_path.exists():
+        record = json.loads(live_path.read_text())
+        if record.get("live") is not True:
+            raise ExtractionError(f"{live_path} is not labelled \"live\": true")
+        return _result(record, live_path, replayed_live=True)
     path = cache_dir / f"{case_id}.json"
     if not path.exists():
         raise ExtractionError(
-            f"no recorded extraction for case {case_id!r} at {path} and live mode is off. "
-            "Record one, or set RETURNGUARD_LLM=live with ANTHROPIC_API_KEY. ReturnGuard never guesses."
+            f"no cached extraction for case {case_id!r} at {path} and live mode is off. "
+            "Add one, or set RETURNGUARD_LLM=live with ANTHROPIC_API_KEY. ReturnGuard never guesses."
         )
     return _result(json.loads(path.read_text()), path)
 
@@ -424,10 +453,11 @@ def run_from_text(
     state: Optional[ProcessingState] = None,
     envelope: Optional[Mapping[str, Any]] = None,
     mode: Optional[str] = None,
+    use_live_cache: bool = False,
 ) -> tuple[Decision, ExtractionReport]:
     """Full AI pipeline for one form text. accepted may be one document or {form_type: document};
     with a mapping, the document the extracted form corrects is picked (W-2c -> W-2)."""
-    ex = extract(text, case_id, mode=mode)
+    ex = extract(text, case_id, mode=mode, use_live_cache=use_live_cache)
     if not isinstance(accepted, AcceptedDocument):
         fcfg = (config.get("forms") or {}).get(ex.form_type)
         if fcfg is None:

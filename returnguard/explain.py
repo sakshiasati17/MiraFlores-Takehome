@@ -122,6 +122,19 @@ def allowed_numbers(decision: Decision) -> set[Decimal]:
 # Notes
 # ---------------------------------------------------------------------------
 
+UNVERIFIED_TAG = "(unverified extracted value)"
+
+
+def unverified_boxes(decision: Decision) -> set[str]:
+    """Boxes whose extracted value failed the source check ("1099-DIV:1b" -> "1b"; "W-2c:1 (correct information)" -> "1").
+    Their proposed new value is the AI's reading, NOT a confirmed correction, and must be labelled as such."""
+    out = set()
+    for f in decision.evidence.findings:
+        if f.code == "EXTRACTION_UNVERIFIED" and f.field and ":" in f.field:
+            out.add(f.field.split(":", 1)[1].split(" ", 1)[0])
+    return out
+
+
 
 def template_note(decision: Decision) -> str:
     """A plain-English reviewer note built only from the Decision's own fields."""
@@ -134,9 +147,11 @@ def template_note(decision: Decision) -> str:
         verb = "applied as a new version" if any(c.applied for c in decision.proposed_changes) else (
             "recorded as a new version, not applied" if any(c.applied_as_new_version for c in decision.proposed_changes)
             else "proposed, not applied")
+        unverified = unverified_boxes(decision)
         for c in decision.proposed_changes:
             label = f" ({c.label})" if c.label else ""
-            parts.append(f"{c.form_type} box {c.field}{label}: {c.old} -> {c.new}, change {signed(c.delta)} ({verb}).")
+            tag = f" {UNVERIFIED_TAG}" if c.field in unverified else ""
+            parts.append(f"{c.form_type} box {c.field}{label}: {c.old} -> {c.new}{tag}, change {signed(c.delta)} ({verb}).")
     else:
         parts.append("No supported value changed.")
     if decision.stale_approvals:
@@ -150,7 +165,7 @@ def template_note(decision: Decision) -> str:
 
 
 def load_cached_note(case_id: str, cache_dir: Path = CACHE_DIR) -> Optional[LLMNote]:
-    """data/llm_cache/<case_id>_note.json, or None if there is no recorded note."""
+    """data/llm_cache/<case_id>_note.json (hand-written MOCKED stand-in, or a LIVE note), or None if there is none."""
     path = Path(cache_dir) / f"{case_id}_note.json"
     if not path.exists():
         return None

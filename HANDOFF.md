@@ -15,10 +15,11 @@ Branch: `returnguard/session-4-extract-explain`, merged into `main`. Commits as 
   "SYNTHETIC - NOT A REAL TAX DOCUMENT". 1099-DIV: `[X] CORRECTED`, payer + TIN, recipient C-001, tax year 2025,
   boxes 1a/1b/2a/4 with `$` and commas. W-2c: employer TIN, tax year, `Box 1 ... | Previously reported $... |
   Correct information $...`. T12.txt = T1's text (1b is $1,600.00). Values match the fixtures (tested).
-- **Recorded LLM outputs** `data/llm_cache/T1, T4, T5, T12.json, T13_note.json`: `"mocked": true`,
-  `"_label": "MOCKED: recorded LLM output for the prototype"`, `model`, `prompt_version`, extraction in the fixed
-  schema. T12 = T1 except 1b `"1060.00"`. T13_note says "fell by $900.00" (true delta -800.00).
-  These were written by hand; no API call was made (the `model` field says so).
+- **Hand-written MOCKED stand-ins** `data/llm_cache/T1, T4, T5, T12.json, T13_note.json`: `"mocked": true`,
+  `"_label": "MOCKED: hand-written stand-in for an LLM output, not a real model call"`, `"source": "hand-written"`,
+  `"model": null`, `prompt_version`, `written_at`, extraction in the fixed schema. T12 = T1 except 1b `"1060.00"` and
+  `"note": "deliberate misread injected for testing"`. T13_note says "fell by $900.00" (true delta -800.00).
+  No model produced any of these files. Only real live outputs (`*.live.json`) may say "recorded"/"live".
 - **`returnguard/extract.py`**: `EXTRACTION_SCHEMA`, `EXTRACTION_PROMPT`, `check_schema`, `extract`, `verify_extraction`,
   `findings_from_checks`, `build_correction`, `run_from_text`.
 - **`returnguard/explain.py`**: `template_note`, `grounded_note`, `allowed_numbers`, `numbers_in`, `load_cached_note`.
@@ -53,8 +54,12 @@ accepted doc, no prior doc ID). Any other envelope key raises ValueError (tested
 
 ### Labels
 - Cache record `"mocked": true` -> `MOCKED`; `"live": true` -> `LIVE`. Anything else is an error.
-- CLI prints `EXTRACTION: MOCKED (...)` with model / prompt version / cache file, and `REVIEWER NOTE [source: TEMPLATE |
-  LLM (MOCKED) | LLM (LIVE)]`.
+- CLI prints `EXTRACTION: MOCKED (MOCKED: hand-written stand-in for an LLM output, not a real model call)` and
+  `source: hand-written stand-in, no model was called`. For a live output: `EXTRACTION: LIVE`, the model, and either
+  "live model call" or "replayed from a recorded live output, no API call this run". Notes: `REVIEWER NOTE [source:
+  TEMPLATE | LLM (MOCKED) | LLM (LIVE)]`.
+- A proposed value whose extraction failed the source check is shown as `1060.00 (unverified extracted value)` in
+  "What changed", in the reasons line and in the template note (`explain.unverified_boxes`, `UNVERIFIED_TAG`).
 
 ### How verification works (code, not the LLM)
 - Each extracted box: find lines that START with the box id (optionally "Box ") AND contain the box label (labels from
@@ -81,19 +86,30 @@ passes its own check (tested on 9 cases).
 ### Live mode (optional, never used by tests)
 ```
 pip install -r requirements.txt -r requirements-llm.txt
-export RETURNGUARD_LLM=live ANTHROPIC_API_KEY=...        # optional: RETURNGUARD_LLM_MODEL (default claude-opus-5-5)
+export RETURNGUARD_LLM=live ANTHROPIC_API_KEY=...        # optional: RETURNGUARD_LLM_MODEL (default claude-haiku-5-5)
 python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1
+# later, replay that real output with no API call:
+python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1 --use-live-cache
 ```
-One `messages.create` call with `EXTRACTION_PROMPT` (schema embedded), output parsed as JSON and passed through
-`check_schema`. Saved to `data/llm_cache/<case>.live.json` labelled `LIVE` with model + timestamp; the MOCKED recordings
-are never overwritten. `RETURNGUARD_LLM=live` without a key -> still cached; `mode="live"` without both -> clear error.
-Tests delete both env vars and monkeypatch `_call_live` to raise; one test stubs it to check the LIVE save path.
+One `messages.create` call with `EXTRACTION_PROMPT` (schema embedded): `model`, `max_tokens=16000`, `messages`,
+`output_config={"effort": "low"}`. **Left out because Claude Haiku 5.5 returns HTTP 400 for them:** `temperature` /
+`top_p` / `top_k` (non-default sampling values), `thinking` with `budget_tokens`, and an assistant prefill. Haiku 5.5
+thinks by default and thinking counts toward `max_tokens`, so the cap is generous, only `text` blocks are read, and a
+`max_tokens` or `refusal` stop is an error (no partial extraction). Output parsed as JSON and passed through `check_schema`.
+The real output is recorded to `data/llm_cache/<case>.live.json` (`"live": true`, `"source": "live"`, model, `recorded_at`);
+the hand-written MOCKED files are never overwritten. `--use-live-cache` (or `use_live_cache=True`) replays the `.live.json`
+when it exists, labelled LIVE, else falls back to the MOCKED file. `RETURNGUARD_LLM=live` without a key -> still cached;
+`mode="live"` without both -> clear error. Tests delete both env vars and monkeypatch `_call_live` to raise; one test stubs
+it to check the LIVE save path; one runs the real `_call_live` body against a FAKE `anthropic` module to check the request
+leaves out the rejected parameters. `test_recorded_live_outputs_verify_against_raw_text` checks any `*.live.json` against
+the raw text and is SKIPPED while none exist (currently skipped).
 
 ### Decisions made (Session 4)
-1. **No `temperature=0` in the live call (deviation from the session prompt).** Current Claude models return HTTP 400 for
-   `temperature` and for forced `tool_choice` (checked against the Claude API reference this session). Determinism comes
-   instead from the fixed prompt + schema, `check_schema`, and code verification. Live mode was NOT run (no key; tests
-   must stay free), so `_call_live` is untested against the real API.
+1. **No `temperature=0` in the live call (deviation from the session prompt).** The default live model is now
+   `claude-haiku-5-5` (follow-up), which returns HTTP 400 for non-default `temperature`/`top_p`/`top_k` (checked against
+   the Claude API reference). Determinism comes instead from the fixed prompt + schema, `check_schema`, and code
+   verification. Live mode was NOT run (no key; tests must stay free), so `_call_live` is untested against the real API
+   (its request shape is tested against a fake SDK).
 2. **T12 cache file is `data/llm_cache/T12.json`**, not `T12_extraction.json` as the T12 fixture's `llm_cache` placeholder
    says. Fixture not edited (no code reads that path). T12/T13 fixture descriptions still start "PLACEHOLDER:" for the
    same reason.
@@ -116,6 +132,17 @@ Tests delete both env vars and monkeypatch `_call_live` to raise; one test stubs
    sees exactly what the AI claimed.
 6. Grounding checks numbers, not wording: a note could cite only allowed numbers but describe them wrongly
    (e.g. "rose by 800.00"). The template is the safe default.
+
+### Session 4 follow-up (same day, same branch, merged again)
+1. MOCKED file labels/keys changed as above (`source`, `model: null`, `written_at` instead of `recorded_at`, T12 `note`);
+   CLI header, docstrings, HANDOFF and CLAUDE.md's layout line no longer call them "recorded".
+2. Default live model `claude-haiku-5-5`, overridable with `RETURNGUARD_LLM_MODEL`; rejected parameters left out (above).
+3. `--use-live-cache` flag + conditional live-output verification test (skips when no `.live.json`).
+4. T12's proposed 1b value labelled "(unverified extracted value)" everywhere it is shown.
+5. Error text for a missing cache: "no cached extraction for case ..." (was "no recorded extraction").
+Tests: `test_extract.py` 48 (1 skipped: no live file), `test_explain.py` 23, `test_cli.py` 14.
+pytest -q (real output, follow-up): `328 passed, 1 skipped in 3.52s` (the skip is the live-output check: no
+`*.live.json` exists). `python3 cli.py --all`: all 15 rows `match`, exit 0.
 
 ### Next: Session 5
 `app.py` (Streamlit) + `README.md`. Reuse `cli.run_text_case`, `extraction_section` data (`ExtractionReport.checks`),
