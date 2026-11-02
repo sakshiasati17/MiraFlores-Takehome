@@ -338,7 +338,7 @@ its -0800 zone; that is 19:03 UTC.)
 | Session 2: validate + impact | 19:15 `4f1234c` | 19:15 `902f2a4` |
 | Session 3: decide + audit + CLI | 19:28 `9c9cf9c` | 19:28 `cf17284` |
 | Session 4: extract + explain, follow-up, live run | 19:41 `cb6aba1` | 19:55 `1c4aebd` |
-| Session 5: UI + README | 20:05 `cd0255c` | SESSION5_LAST |
+| Session 5: UI + README | 20:05 `cd0255c` | 20:07 `d4e8b03` (README + HANDOFF; a one-line time-log fill follows) |
 
 [RESEARCH AND MEMO TIME: filled in by Sakshi]
 
