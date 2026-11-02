@@ -78,14 +78,18 @@ def envelope_from(fixture: CaseFixture | None) -> dict | None:
 
 
 def run_text_case(text: str, case_id: str, config: dict, fixture: CaseFixture | None = None,
-                  log: AuditLog | None = None, use_live_cache: bool = False) -> tuple[AcceptedDocument, Decision, ExtractionReport]:
-    """Form text -> extraction (MOCKED unless live mode is on, or a .live.json replay) -> source check -> decide()."""
+                  log: AuditLog | None = None, use_live_cache: bool = False,
+                  mode: str | None = None) -> tuple[AcceptedDocument, Decision, ExtractionReport]:
+    """Form text -> extraction (MOCKED unless live mode is on, or a .live.json replay) -> source check -> decide().
+
+    mode: passed to extract(). None (default, used by the CLI) = live only if RETURNGUARD_LLM=live and a key are set;
+    "cached" = never call the API (replay MOCKED, or .live.json with use_live_cache). The UI always passes "cached"."""
     rs = load_return_state()
     if fixture is not None:
         rs = rs.model_copy(update={"status": fixture.return_status})
     accepted = load_accepted()
     d, rep = run_from_text(text, case_id, accepted, rs, config, ProcessingState(), envelope=envelope_from(fixture),
-                           use_live_cache=use_live_cache)
+                           mode=mode, use_live_cache=use_live_cache)
     if log is not None:
         log.append(log_record(case_id, d))
     target = ((config["forms"].get(rep.correction.form_type) or {}).get("correction") or {}).get(
@@ -203,7 +207,8 @@ def _fixture_or_none(case_id: str) -> CaseFixture | None:
     return load_fixture(path) if path.exists() else None
 
 
-def run_all(config: dict, log: AuditLog | None) -> tuple[str, bool]:
+def run_all(config: dict, log: AuditLog | None, mode: str | None = None) -> tuple[str, bool]:
+    """mode: passed to run_text_case for text cases (T12). None = CLI default; the UI passes "cached"."""
     paths = sorted(CASES.glob("T*.json"), key=lambda p: int(p.stem[1:]))
     rows = [("case", "expected", "actual", "match")]
     ok = True
@@ -212,7 +217,7 @@ def run_all(config: dict, log: AuditLog | None) -> tuple[str, bool]:
         expected = [s.value for s in (fx.expected.status_sequence or [fx.expected.status])]
         extra_ok = True
         if fx.case_id in LLM_TEXT_CASES:
-            _, d, rep = run_text_case((RAW / f"{fx.case_id}.txt").read_text(), fx.case_id, config, fx, log)
+            _, d, rep = run_text_case((RAW / f"{fx.case_id}.txt").read_text(), fx.case_id, config, fx, log, mode=mode)
             actual = [d.status.value]
             note = f" (from text, {rep.extraction.mode_label} extraction, {sum(not c.verified for c in rep.checks)} UNVERIFIED)"
             extra_ok = not rep.all_verified  # T12 exists to show the misread is caught

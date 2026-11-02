@@ -105,3 +105,31 @@ def test_every_case_renders_its_expected_status():
         assert not at.exception, (fx["case_id"], [x.value for x in at.exception])
         banner = re.search(r'rg-status-label" style="color:#\w+;">(\w+)<', page_text(at)).group(1)
         assert banner == fx["expected"]["status"], fx["case_id"]
+
+
+def test_app_never_calls_the_api_even_in_live_mode(monkeypatch):
+    """RETURNGUARD_LLM=live + a key would make extract() call the model by default. The app passes mode="cached",
+    so it must still render (from the saved outputs) while the live call is patched to blow up."""
+    import returnguard.extract as extract_mod
+
+    def _boom(*_a, **_k):
+        raise AssertionError("the UI must never call the live API")
+
+    monkeypatch.setenv("RETURNGUARD_LLM", "live")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-key-for-test")
+    monkeypatch.setattr(extract_mod, "_call_live", _boom)
+    assert extract_mod.live_enabled()  # the environment really is in live mode
+    for use_live in (True, False):
+        txt = page_text(run_case("T1", use_live=use_live))
+        assert "APPLY_AND_REREVIEW" in txt and "-800.00" in txt
+        assert ("LIVE · claude-haiku-5-5" if use_live else "MOCKED · hand-written stand-in") in txt
+        assert "replayed, no API call this run" in txt or not use_live
+    txt = page_text(run_case("T12"))
+    assert "SPECIALIST_REVIEW" in txt and "1060.00" in txt
+
+
+def test_fixture_descriptions_have_no_placeholder():
+    txt = page_text(run_case("T12"))
+    assert "AI misread: extraction says 1b 1060.00, form text says 1600.00" in txt
+    assert "PLACEHOLDER" not in txt
+    assert "Re-review the approvals listed in this report" in page_text(run_case("T1"))

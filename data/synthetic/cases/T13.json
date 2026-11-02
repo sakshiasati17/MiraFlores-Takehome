@@ -3,7 +3,7 @@
   "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
   "case_id": "T13",
   "angle": "AI note",
-  "description": "PLACEHOLDER: same correction as T1; the cached reviewer note (built in Session 4, MOCKED) contains a number not in the checked facts. Status is unchanged from T1.",
+  "description": "Ungrounded AI reviewer note containing a number not in the checked facts",
   "return_status": "APPROVED",
   "submissions": [
     {
@@ -53,6 +53,6 @@
   },
   "llm_cache": {
     "note": "data/llm_cache/T13_note.json",
-    "status": "PLACEHOLDER: built in Session 4 (MOCKED)"
+    "status": "MOCKED: hand-written stand-in"
   }
 }
