@@ -34,7 +34,7 @@ from .validate import Finding, validate
 S = DecisionStatus
 
 NEXT_ACTION: dict[DecisionStatus, str] = {
-    S.APPLY_AND_REREVIEW: "Re-review the approvals listed above against the corrected document. Nothing has been approved automatically.",
+    S.APPLY_AND_REREVIEW: "Re-review the approvals listed in this report against the corrected document. Nothing has been approved automatically.",
     S.POSSIBLE_AMENDMENT: "Return already filed. CPA to assess whether an amended return is needed. Nothing has been changed automatically.",
     S.CONFLICT: "Correction does not match the accepted document. Reconcile with the issuer before using it. Nothing has been changed.",
     S.SPECIALIST_REVIEW: "Outside what this prototype handles automatically. Route to a specialist reviewer. Nothing has been changed.",

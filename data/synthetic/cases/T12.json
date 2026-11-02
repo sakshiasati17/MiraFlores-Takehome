@@ -3,7 +3,7 @@
   "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
   "case_id": "T12",
   "angle": "AI mistake",
-  "description": "PLACEHOLDER: corrected 1099-DIV source text says box 1b 1600.00; the cached LLM extraction (built in Session 4, MOCKED) will misread it as 1060.00.",
+  "description": "AI misread: extraction says 1b 1060.00, form text says 1600.00",
   "return_status": "APPROVED",
   "submissions": [
     {
@@ -33,7 +33,7 @@
     ]
   },
   "llm_cache": {
-    "extraction": "data/llm_cache/T12_extraction.json",
-    "status": "PLACEHOLDER: built in Session 4 (MOCKED)"
+    "extraction": "data/llm_cache/T12.json",
+    "status": "MOCKED: hand-written stand-in"
   }
 }

@@ -6,6 +6,62 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after Session 5b (polish fixes). Date: 2026-11-02
+Branch: `returnguard/session-5b-polish` (from origin/main 30973e4), merged into `main`. Commits as `sakshiasati17`.
+
+### Done (each approved by Sakshi before coding)
+1. **Next-action wording**: `decide.NEXT_ACTION[APPLY_AND_REREVIEW]` now reads "Re-review the approvals listed in this
+   report against the corrected document. ..." (string only). `tests/test_cli.py` assertion updated to the new
+   wording (only the quoted string changed, no expected status/value). README limitation line removed.
+2. **T12/T13 fixtures** (labels and paths only, no values or expected results changed):
+   T12 description "AI misread: extraction says 1b 1060.00, form text says 1600.00", `llm_cache.extraction` ->
+   `data/llm_cache/T12.json`; T13 description "Ungrounded AI reviewer note containing a number not in the checked
+   facts" (`llm_cache.note` was already `data/llm_cache/T13_note.json`); both `llm_cache.status` ->
+   "MOCKED: hand-written stand-in". `models.py`: the one stale comment above `CaseFixture.llm_cache` reworded
+   (comment only, approved). The sidebar's PLACEHOLDER-hiding workaround in app.py is removed.
+3. **UI never calls the API**: `cli.run_text_case(..., mode=None)` and `cli.run_all(config, log, mode=None)` gained an
+   optional `mode` passed through to `extract()`. Default `None` = unchanged CLI behaviour. `app.py` always passes
+   `mode="cached"` (with `use_live_cache` from the toggle, so LIVE recordings still replay). The UI live-mode warning
+   is removed. **Note:** `run_all` needed the argument too. The new test first FAILED with only `run_text_case`
+   changed, because the All cases tab runs T12 through `run_all` -> `run_text_case` with the default mode, which would
+   have called the API in live mode. Fixed by the same passthrough.
+   New test `test_app_never_calls_the_api_even_in_live_mode`: sets `RETURNGUARD_LLM=live` + a dummy key, asserts
+   `live_enabled()` is True, patches `extract._call_live` to raise, then renders T1 (toggle ON -> LIVE replay, OFF ->
+   MOCKED) and T12; all render with the expected status. Plus `test_fixture_descriptions_have_no_placeholder`.
+4. **Form-text panel wraps** (`white-space: pre-wrap; overflow-wrap: anywhere`, no `overflow-x`). Checked in Chromium at
+   1100px width: panel scrollWidth == clientWidth (344 == 344), no sideways scroll.
+5. **README time log in Pacific time**, as git prints it (`PST`; DST ended 2026-11-01), from
+   `TZ=America/Los_Angeles git log ... --date=format-local:'%H:%M %Z'`. First commit 10:41 PST (git's time: 18:41:40 UTC).
+   Research/total placeholders kept. README test counts updated to 341 and the live-safety statement added.
+6. Screenshots retaken: `T1.png`, `T1_above_fold.png`, `T12.png` (page text changed). `T5.png` and `all_cases.png`
+   unchanged (nothing visible changed on them).
+
+### pytest -q (real output, Session 5b, after committing the code + fixture changes)
+```
+........................................................................ [ 21%]
+........................................................................ [ 42%]
+........................................................................ [ 63%]
+........................................................................ [ 84%]
+.....................................................                    [100%]
+341 passed in 7.74s
+```
+Before committing, `test_fixture_files_untouched_after_run` failed only because the approved T12/T13 edits were still
+uncommitted (it checks `git status` of `data/`); it passes on the committed tree. `python3 cli.py --all`: all 15 rows
+`match`, exit 0. Headless app served HTTP 200; T1 next action shows the new wording, T12 sidebar shows the new description.
+
+### Known issues (still open)
+1. Abbreviated box labels won't verify (fails safe); note check checks numbers, not direction; IRS mappings listed in
+   README still UNVERIFIED; filing status entered by hand. (Unchanged.)
+2. Streamlit prints "missing ScriptRunContext" warnings when helpers run outside `streamlit run` (harmless).
+3. GitHub default branch: `returnguard-setup` was brought up to date with `main` via PR #5 (merged), but `main` is
+   still not the default. Sakshi: Settings -> General -> Default branch -> `main`.
+Session 5 known issues 1-4 (wording, PLACEHOLDER text, UI live calls, sideways scroll) are resolved above.
+
+### Next: Session 6
+Fresh-eyes review from a clean clone -> `REVIEW.md` (report only, no code fixes).
+
+---
+
 ## Status after Session 5 (app.py Streamlit UI + README). Date: 2026-11-02
 Branch: `returnguard/session-5-ui-readme` (from origin/main 1c4aebd), merged into `main`. Commits as `sakshiasati17`.
 The cloud session's auto-assigned `claude/sweet-carson-qi1ewb` branch was NOT used. **No file under `returnguard/`,

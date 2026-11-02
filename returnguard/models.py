@@ -237,6 +237,6 @@ class CaseFixture(_Synthetic):
     description: str
     return_status: ReturnStatus
     submissions: list[CorrectionDocument] = Field(min_length=1)
-    # Session 4 builds data/llm_cache/ files; until then these point at placeholders.
+    # Informational only (no code reads it): where the case's MOCKED LLM stand-in lives in data/llm_cache/.
     llm_cache: Optional[dict[str, str]] = None
     expected: ExpectedResult

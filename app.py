@@ -25,7 +25,7 @@ import streamlit as st
 import cli
 from returnguard.decide import Decision, naive_total_changed, signed
 from returnguard.explain import UNVERIFIED_TAG, NoteResult, grounded_note, load_cached_note, unverified_boxes
-from returnguard.extract import ExtractionReport, FieldCheck, live_enabled, to_decimal
+from returnguard.extract import ExtractionReport, FieldCheck, to_decimal
 from returnguard.models import AcceptedDocument, CaseFixture, CorrectionDocument
 
 # ---------------------------------------------------------------------------
@@ -101,7 +101,8 @@ def run_view(case_id: str, use_live_cache: bool = True) -> CaseView:
     fx = fixture(case_id)
     if case_id in TEXT_CASES:
         text = (cli.RAW / f"{case_id}.txt").read_text()
-        acc, d, rep = cli.run_text_case(text, case_id, config(), fx, log=None, use_live_cache=use_live_cache)
+        acc, d, rep = cli.run_text_case(text, case_id, config(), fx, log=None,
+                                         use_live_cache=use_live_cache, mode="cached")  # never calls the API
         note = grounded_note(d, load_cached_note(case_id))
         return CaseView(case_id, fx, [(acc, d)], [rep.correction], note, text, rep)
     results = cli.run_case(fx, config(), log=None)
@@ -112,7 +113,7 @@ def run_view(case_id: str, use_live_cache: bool = True) -> CaseView:
 @lru_cache(maxsize=1)
 def all_cases() -> tuple[list[dict], bool]:
     """Run exactly what `python3 cli.py --all` runs (cli.run_all, no audit log) and split its table into rows."""
-    text, ok = cli.run_all(config(), None)
+    text, ok = cli.run_all(config(), None, mode="cached")  # never calls the API
     lines = text.splitlines()
     rows = []
     for ln in lines[1:]:
@@ -316,10 +317,10 @@ CSS = """
 .rg-rg { border-width:2px; background:rgba(15,110,110,.06); }
 .rg-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:.75rem; font-weight:600; line-height:1.5; white-space:nowrap; }
 .rg-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.8rem; line-height:1.6;
-           border:1px solid rgba(127,127,127,.25); border-radius:8px; padding:8px 0; overflow-x:auto; background:rgba(127,127,127,.05); }
-.rg-line { padding:0 16px; white-space:pre; }
+           border:1px solid rgba(127,127,127,.25); border-radius:8px; padding:8px 0; background:rgba(127,127,127,.05); }
+.rg-line { padding:0 16px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .rg-ok, .rg-bad { padding-top:4px; padding-bottom:4px; }
-.rg-ok > span:first-child, .rg-bad > span:first-child { white-space:pre; }
+.rg-ok > span:first-child, .rg-bad > span:first-child { white-space:pre-wrap; overflow-wrap:anywhere; }
 .rg-ok { background:rgba(46,125,50,.14); border-left:3px solid #2E7D32; }
 .rg-bad { background:rgba(192,54,44,.16); border-left:3px solid #C0362C; }
 .rg-ann { display:block; font-weight:700; white-space:normal; font-size:.78rem; }
@@ -424,13 +425,10 @@ def main() -> None:
     with st.sidebar:
         st.markdown("### Case")
         case_id = st.selectbox("Test case", CASE_ORDER, index=0, format_func=case_label, key="case")
-        st.caption(fixture(case_id).description.removeprefix("PLACEHOLDER: "))  # stale Session 1 prefix; display only
+        st.caption(fixture(case_id).description)
         use_live = st.toggle("Use saved live AI outputs where available", value=True, key="use_live")
         st.caption("ON: T1, T4, T5 replay their recorded LIVE outputs (no API call). "
                    "Everything else uses hand-written stand-ins (MOCKED).")
-        if live_enabled():
-            st.warning("RETURNGUARD_LLM=live and an API key are set in this environment, so text cases will CALL the "
-                       "model. Unset RETURNGUARD_LLM for the offline demo.")
         st.markdown("---")
         st.info("**About**  \nSynthetic data only. Not tax advice. Decisions require CPA review.")
 

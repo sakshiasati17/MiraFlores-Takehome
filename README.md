@@ -111,7 +111,7 @@ returnguard/
   explain.py               reviewer note + number-grounding check
 data/synthetic/            SYNTHETIC inputs: accepted docs, return state, cases/T1-T15.json, raw/*.txt
 data/llm_cache/            AI outputs: *.json (MOCKED stand-ins), *.live.json (LIVE recordings)
-tests/                     pytest (339 tests)
+tests/                     pytest (341 tests)
 .streamlit/config.toml     UI theme
 docs/                      brief, project plan, v1 memo, screenshots
 ```
@@ -236,9 +236,10 @@ T15   SPECIALIST_REVIEW                        SPECIALIST_REVIEW                
 | T14 | No-op | Corrected, all values identical |
 | T15 | Unknown field | 1099-DIV box 7 changes |
 
-`python3 -m pytest -q` (real run, Session 5): **`339 passed in 6.35s`**. This includes `tests/test_app_smoke.py`,
+`python3 -m pytest -q` (real run, Session 5b): **`341 passed in 7.74s`**. This includes `tests/test_app_smoke.py`,
 which loads `app.py` with Streamlit's `AppTest`, selects T1, T12, T5, T3 and T13, and checks every case renders
-its expected status and the All cases tab shows 15 of 15.
+its expected status and the All cases tab shows 15 of 15. It also checks that the UI never calls the API, even with `RETURNGUARD_LLM=live` and a key set
+(the live call is patched to fail and every page still renders).
 
 ## 8. Live AI run
 
@@ -271,8 +272,8 @@ python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1
 `RETURNGUARD_LLM_MODEL` is optional (default `claude-haiku-5-5`). A live run overwrites `data/llm_cache/T1.live.json`;
 the MOCKED files are never touched. **Temperature is not sent**: Claude Haiku 5.5 rejects non-default
 `temperature`/`top_p`/`top_k` with HTTP 400. Consistency comes from the fixed prompt and schema, the schema check,
-and code verification of every value against the source text. If live mode is set in the environment when the UI
-runs, the sidebar shows a warning, because text cases will then call the API.
+and code verification of every value against the source text. **The UI never calls the API**: it always replays saved outputs (`mode="cached"`), even if live mode is set
+in the environment. Live runs are CLI-only.
 
 ## 9. Implemented / mocked / deferred
 
@@ -285,7 +286,7 @@ runs, the sidebar shows a warning, because text cases will then call the API.
 | Source check of every AI-extracted value | **Implemented** |
 | Number-grounding check of AI reviewer notes | **Implemented** |
 | Append-only audit log (CLI) | **Implemented** |
-| CLI + Streamlit UI + 339 tests | **Implemented** |
+| CLI + Streamlit UI + 341 tests | **Implemented** |
 | AI extraction for T1/T4/T5 | **LIVE** recorded outputs, replayed (no API call) |
 | AI extraction for T12, AI note for T13 | **MOCKED** (hand-written stand-ins) |
 | Return status (APPROVED / FILED) | **MOCKED** (entered by hand; labelled) |
@@ -311,7 +312,6 @@ runs, the sidebar shows a warning, because text cases will then call the API.
   - W-2 / W-2c box labels (`config/forms.yaml` header)
 - **Filing status is entered by hand** (labelled MOCKED); nothing tracks IRS acceptance.
 - Only direct dependencies are walked (no knock-on through total income / taxable income).
-- The NEXT ACTION text for APPLY_AND_REREVIEW says "approvals listed above"; in the UI they appear below it.
 
 ## 11. How AI was used and checked
 
@@ -323,24 +323,25 @@ runs, the sidebar shows a warning, because text cases will then call the API.
 - **Inside the product:** live LLM extraction was run on T1, T4 and T5 (`claude-haiku-5-5`). Every extracted
   value is checked by code against the source text line by line. The LLM cannot set a status (the schema has no
   such field). An AI-drafted note is accepted only if every number in it is a checked fact.
-- **Checking the AI's output:** 339 tests, including deliberate AI failures (T12 misread, T13 ungrounded note) and
+- **Checking the AI's output:** 341 tests, including deliberate AI failures (T12 misread, T13 ungrounded note) and
   a test that re-verifies every recorded live output against the raw text.
 - **Reused prior work:** none.
 
 ## 12. Time log
 
-Commit times (UTC) from `TZ=UTC git log --reverse --format='%h %ad %s' --date=format-local:'%H:%M'`. The first
-commit marks the build start. (The plain `--date=format` form shows the GitHub web merge of PR #1 as 11:03 in
-its -0800 zone; that is 19:03 UTC.)
+Commit times in Pacific time (PST, as git prints it) from
+`TZ=America/Los_Angeles git log --reverse --format='%h %ad %s' --date=format-local:'%H:%M %Z'`.
+The first commit marks the build start.
 
 | Phase | First commit | Last commit |
 | --- | --- | --- |
-| Setup: rules, brief, plan (build start) | 18:41 `33fde96` | 18:57 `bdb6e99` |
-| Session 1: skeleton, schemas, config, fixtures | 19:01 `7807988` | 19:03 `9979e40` (merge PR #1) |
-| Session 2: validate + impact | 19:15 `4f1234c` | 19:15 `902f2a4` |
-| Session 3: decide + audit + CLI | 19:28 `9c9cf9c` | 19:28 `cf17284` |
-| Session 4: extract + explain, follow-up, live run | 19:41 `cb6aba1` | 19:55 `1c4aebd` |
-| Session 5: UI + README | 20:05 `cd0255c` | 20:07 `d4e8b03` (README + HANDOFF; a one-line time-log fill follows) |
+| Setup: rules, brief, plan (build start) | 10:41 PST `33fde96` | 10:57 PST `bdb6e99` |
+| Session 1: skeleton, schemas, config, fixtures | 11:01 PST `7807988` | 11:03 PST `9979e40` (merge PR #1) |
+| Session 2: validate + impact | 11:15 PST `4f1234c` | 11:15 PST `902f2a4` |
+| Session 3: decide + audit + CLI | 11:28 PST `9c9cf9c` | 11:28 PST `cf17284` |
+| Session 4: extract + explain, follow-up, live run | 11:41 PST `cb6aba1` | 11:55 PST `1c4aebd` |
+| Session 5: UI + README | 12:05 PST `cd0255c` | 12:09 PST `30973e4` |
+| Session 5b: polish fixes | 12:23 PST `5735a04` | 12:24 PST (README + HANDOFF commit) |
 
 [RESEARCH AND MEMO TIME: filled in by Sakshi]
 

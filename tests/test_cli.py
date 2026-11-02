@@ -25,7 +25,7 @@ def test_T1_text_report(tmp_path):
     assert "-800.00" in out and "2400.00 -> 1600.00" in out
     assert "APR-1040-L3A" in out and "APR-QDCG-WS" in out and "[UNVERIFIED]" in out
     assert "Naive check (did total income change?): no" in out
-    assert "NEXT ACTION: Re-review the approvals listed above" in out
+    assert "NEXT ACTION: Re-review the approvals listed in this report" in out
 
 
 def test_T5_text_report(tmp_path):
