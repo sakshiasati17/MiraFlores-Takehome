@@ -1,0 +1,30 @@
+{
+  "live": true,
+  "_label": "LIVE: real model output recorded by ReturnGuard (synthetic input only)",
+  "source": "live",
+  "synthetic": true,
+  "case_id": "T1",
+  "model": "claude-haiku-5-5",
+  "prompt_version": "extract-v1",
+  "recorded_at": "2026-11-02T19:52:13+00:00",
+  "extraction": {
+    "form_type": "1099-DIV",
+    "corrected": true,
+    "payer_or_employer_tin": "00-0000001",
+    "tax_year": 2025,
+    "fields": {
+      "1a": {
+        "value": "3,200.00"
+      },
+      "1b": {
+        "value": "1,600.00"
+      },
+      "2a": {
+        "value": "500.00"
+      },
+      "4": {
+        "value": "0.00"
+      }
+    }
+  }
+}

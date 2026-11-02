@@ -138,6 +138,8 @@ def test_from_text_unknown_case_is_clear_error(tmp_path):
 
 
 def test_use_live_cache_without_live_file_falls_back_to_mocked(tmp_path):
-    r = cli_offline("--from-text", "data/synthetic/raw/T1.txt", "--case", "T1", "--use-live-cache", tmp_path=tmp_path)
+    # T12 has no recorded live output (T1/T4/T5 do since the live run), so the flag must fall back to MOCKED.
+    assert not (ROOT / "data" / "llm_cache" / "T12.live.json").exists()
+    r = cli_offline("--from-text", "data/synthetic/raw/T12.txt", "--case", "T12", "--use-live-cache", tmp_path=tmp_path)
     assert r.returncode == 0, r.stderr
-    assert "EXTRACTION: MOCKED" in r.stdout and "STATUS:  APPLY_AND_REREVIEW" in r.stdout
+    assert "EXTRACTION: MOCKED" in r.stdout and "STATUS:  SPECIALIST_REVIEW" in r.stdout
