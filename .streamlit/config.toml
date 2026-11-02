@@ -1,0 +1,11 @@
+# ReturnGuard review console theme (Session 5). Calm, light, professional.
+[theme]
+base = "light"
+primaryColor = "#0F6E6E"
+backgroundColor = "#FAFAF7"
+secondaryBackgroundColor = "#F1F0EB"
+textColor = "#1F2328"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
