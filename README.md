@@ -40,15 +40,17 @@ pip install -r requirements.txt
 ```
 
 ```bash
-streamlit run app.py
-```
-
-```bash
 python3 -m pytest -q
 ```
 
 ```bash
 python3 cli.py --all
+```
+
+Start the UI last: it keeps running in this terminal until Ctrl+C (open http://localhost:8501).
+
+```bash
+streamlit run app.py
 ```
 
 Dependencies (`requirements.txt`, pinned): pydantic 2.13.5, PyYAML 6.0.3, pytest 9.2.0, streamlit 1.66.1.
