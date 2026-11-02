@@ -6,6 +6,12 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after Session 6 (fresh-eyes review). Date: 2026-11-02
+Review done from a clean clone of `main` @ 0dc82ed; full report in **`REVIEW.md`**. Branch `returnguard/session-6-review`, merged into `main`.
+Verdict: prototype PASS (341 passed, 15 of 15 match, safety PASS, UI makes 0 API calls in live mode). Only README change: quick start runs pytest/CLI before `streamlit run`.
+Open items: `docs/writeup.md` not in repo; GitHub default branch `returnguard-setup` lacks Session 5b (set default to `main`); README `[RESEARCH AND MEMO TIME]`/`[TOTAL]` unfilled;
+live-case config edits turn 10 tests red until fixtures/tests are updated and committed (REVIEW.md F3); findings F4–F8 are report-only.
+
 ## Status after Session 5b (polish fixes). Date: 2026-11-02
 Branch: `returnguard/session-5b-polish` (from origin/main 30973e4), merged into `main`. Commits as `sakshiasati17`.
 
