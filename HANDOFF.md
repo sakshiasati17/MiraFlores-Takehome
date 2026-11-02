@@ -6,6 +6,81 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after Session 5 (app.py Streamlit UI + README). Date: 2026-11-02
+Branch: `returnguard/session-5-ui-readme` (from origin/main 1c4aebd), merged into `main`. Commits as `sakshiasati17`.
+The cloud session's auto-assigned `claude/sweet-carson-qi1ewb` branch was NOT used. **No file under `returnguard/`,
+`config/`, `data/` or `cli.py` was changed.**
+
+### Done
+- **`app.py`** (display only). Calls only existing functions: `cli.run_text_case` (T1, T4, T5, T12 from
+  `data/synthetic/raw/*.txt`), `cli.run_case` (all other cases), `cli.run_all` (All cases tab: its text table is
+  split into rows, so the tab shows exactly what `python3 cli.py --all` prints), `explain.grounded_note` +
+  `load_cached_note`, `decide.naive_total_changed`, `explain.unverified_boxes`. `log=None` everywhere: the UI never
+  writes the audit log.
+  - Sidebar: case picker (T1, T12, T5, T3, T4 with headline labels, then T2, T6-T11, T13-T15 by fixture angle),
+    toggle "Use saved live AI outputs where available" (default ON -> `use_live_cache=True`; T1/T4/T5 replay
+    `.live.json` = LIVE, T12 falls back to MOCKED), About box, and a warning if `RETURNGUARD_LLM=live` + key are set
+    (text cases would then call the API; `run_text_case` has no mode argument).
+  - Main ("Case review" tab), top to bottom: header + "Synthetic data · prototype" tag; status banner (coloured left
+    border, next action, "Nothing is ever approved automatically."); naive check vs ReturnGuard cards (1099-DIV only);
+    "What the AI read" (LIVE/MOCKED pill, monospace form text with each checked line highlighted ✓ verified / ✗ AI read
+    X — form says Y, checks table, raw text expander; JSON cases: "Structured input (no AI step)"); "What changed"
+    (before/after/delta, applied pill, "(unverified extracted value)" tag); "Approvals that need re-review" as chips
+    (dashed + "unverified mapping" when the config flags it); "Reviewer note" with source and rejected numbers (T13);
+    "Reasons and evidence" expander; footer.
+  - T7 (two submissions): banner shows the last decision plus the sequence APPLY_AND_REREVIEW -> DUPLICATE_NO_CHANGE.
+  - All helpers that build HTML are pure functions (`status_banner`, `naive_cards`, `evidence_panel`, `checks_table`,
+    `changes_table`, `approvals_html`, `note_html`, `all_cases_html`); `main()` only runs under `__main__`.
+- **`.streamlit/config.toml`**: light theme, primary #0F6E6E, bg #FAFAF7, secondary #F1F0EB, text #1F2328, sans serif,
+  usage stats off. Inline CSS uses translucent tints, no hard-coded white, max width 1100px, 8px rhythm.
+- **`tests/test_app_smoke.py`** (8 tests, AppTest drives the real page): T1 (APPLY_AND_REREVIEW, -800.00, both
+  approvals, naive "→ No", LIVE pill), T1 with toggle OFF (MOCKED, same status), T12 (SPECIALIST_REVIEW, UNVERIFIED,
+  1060.00, "AI read 1,060.00 — form says 1,600.00", unverified tag, MOCKED), T5 (CONFLICT, "None. Nothing changed."),
+  T3 (POSSIBLE_AMENDMENT, no AI step), T13 (LLM note REJECTED, 900.00), All cases tab (15 of 15, 15 "✓ match"),
+  and every fixture's banner status == its expected status. AppTest could drive all widgets; no fallback needed.
+- **`README.md`** (new; there was none): every result pasted from real runs this session.
+- **`docs/screenshots/`**: T1.png, T1_above_fold.png, T12.png, T5.png, all_cases.png (Playwright + Chromium against
+  `streamlit run app.py --server.headless true`; the script reported T1 APPLY_AND_REREVIEW, T12 SPECIALIST_REVIEW,
+  T5 CONFLICT, "15 of 15 match expected").
+
+### pytest -q (real output, Session 5)
+```
+........................................................................ [ 21%]
+........................................................................ [ 42%]
+........................................................................ [ 63%]
+........................................................................ [ 84%]
+...................................................                      [100%]
+339 passed in 6.35s
+```
+(331 before this session + 8 new.) `python3 cli.py --all`: all 15 rows `match`, exit 0. Headless server check:
+`curl http://localhost:8501/` -> HTTP 200, `/_stcore/health` -> `ok`; server stopped afterwards.
+
+### Decisions made (Session 5, all approved by Sakshi before coding)
+1. T1/T4/T5 run from form text in the UI (so "What the AI read" is real); `cli.py --all` still runs them from JSON.
+   Same statuses either way (tested).
+2. UI passes `log=None`: Streamlit re-runs on every click, so it would spam the append-only log. CLI logs as before.
+3. venv + `pip install -r requirements.txt` (streamlit/pytest were not installed in the container). Python 3.13 here.
+4. README time log uses `TZ=UTC ... --date=format-local:'%H:%M'`: with plain `--date=format` the GitHub web merge of
+   PR #1 shows 11:03 (-0800) instead of 19:03 UTC.
+
+### Known issues (found this session; NOT fixed, outside scope)
+1. `decide.NEXT_ACTION[APPLY_AND_REREVIEW]` says "approvals listed above"; in the UI (and CLI) they are listed below.
+   Wording only; left alone because `returnguard/` was out of scope. Listed in README limitations.
+2. T12/T13 fixture `description` and `llm_cache.status` still start "PLACEHOLDER: ... built in Session 4".
+   The UI strips the "PLACEHOLDER: " prefix in the sidebar caption (display only); the CLI still prints it.
+   Fixture text should be cleaned in a data-scoped session.
+3. If `RETURNGUARD_LLM=live` and a key are set when the UI runs, text cases call the API and overwrite `.live.json`
+   (the UI shows a warning). A `mode` argument on `cli.run_text_case` would let the UI force cached mode.
+4. Long W-2c lines scroll horizontally in the evidence panel at laptop width.
+5. Streamlit prints "missing ScriptRunContext" warnings when helpers run outside `streamlit run` (harmless).
+
+### Next: Session 6
+Fresh-eyes review from a clean clone -> `REVIEW.md` (report only, no code fixes). Suggested checks: follow the README
+quick start exactly in a new venv, run the demo path T1 -> T12 -> T5 -> T3, confirm labels (SYNTHETIC / MOCKED /
+LIVE), and look at known issues 1-3 above.
+
+---
+
 ## Status after Session 4 (extract.py + explain.py: the AI step). Date: 2026-11-02
 Branch: `returnguard/session-4-extract-explain`, merged into `main`. Commits as `sakshiasati17`.
 (The cloud session's auto-assigned `claude/loving-ptolemy-lndqda` branch was NOT used, as agreed.)
