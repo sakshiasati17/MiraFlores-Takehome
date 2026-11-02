@@ -17,8 +17,10 @@ Take-home prototype for MiraFlores AI (AI Engineer, Tax). **Synthetic data only.
 
 Requires **Python 3.11+ (tested on 3.13)**. No API key, no network, no paid service.
 
+Clone with `-b main`: `main` is the source of truth (the repository's GitHub default branch is currently an older setup branch).
+
 ```bash
-git clone https://github.com/sakshiasati17/MiraFlores-Takehome.git
+git clone -b main https://github.com/sakshiasati17/MiraFlores-Takehome.git
 ```
 
 ```bash
