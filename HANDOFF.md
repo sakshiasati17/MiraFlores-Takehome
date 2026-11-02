@@ -144,6 +144,22 @@ Tests: `test_extract.py` 48 (1 skipped: no live file), `test_explain.py` 23, `te
 pytest -q (real output, follow-up): `328 passed, 1 skipped in 3.52s` (the skip is the live-output check: no
 `*.live.json` exists). `python3 cli.py --all`: all 15 rows `match`, exit 0.
 
+### Live run (2026-11-02, T1 / T4 / T5)
+- `RETURNGUARD_LLM=live python3 cli.py --from-text data/synthetic/raw/<case>.txt --case <case>` with `claude-haiku-5-5`.
+  Each first call succeeded. Saved `data/llm_cache/T1.live.json`, `T4.live.json`, `T5.live.json` (`"live": true`,
+  `"source": "live"`, model, `recorded_at`). Every value VERIFIED against the source text (T1 8/8, T4 6/6, T5 6/6).
+  Statuses: T1 APPLY_AND_REREVIEW (-800.00), T4 APPLY_AND_REREVIEW (+4500.00), T5 CONFLICT, matching expected.
+  So `_call_live` has now worked against the real API for these three cases.
+- `test_recorded_live_outputs_verify_against_raw_text` now RUNS (3 cases, passing) instead of skipping. It and every
+  other test still run with no key and no network (they replay the `.live.json` files).
+- **Test change (no expected value changed):** `test_use_live_cache_without_live_file_falls_back_to_mocked` used T1,
+  assuming no `T1.live.json` existed; after the live run the flag correctly replays T1 as LIVE, so the test's premise
+  was stale. It now uses T12 (no live file; asserted), still checks the fallback to MOCKED, and expects T12's status
+  SPECIALIST_REVIEW.
+- Key handling: the API key was never printed or committed (`git grep "sk-ant"` finds nothing); the temporary copy used
+  for the run was deleted. The key was pasted in chat, so Sakshi will rotate it.
+- T12 live was not run on purpose: T12 exists to test a misread, and the live check test skips it.
+
 ### Next: Session 5
 `app.py` (Streamlit) + `README.md`. Reuse `cli.run_text_case`, `extraction_section` data (`ExtractionReport.checks`),
 `grounded_note`. Show the MOCKED label prominently in the UI.
