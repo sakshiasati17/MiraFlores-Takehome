@@ -6,6 +6,124 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after Session 2 (validate.py + impact.py). Date: 2026-11-02
+Branch: `returnguard/session-2-validate-impact`, merged into `main`.
+
+### Done
+- **Step 0**
+  - `pytest.ini` (`[pytest] pythonpath = .`); `sys.path` hack removed from `tests/test_models.py`. 70 Session 1 tests still pass.
+  - IRS pages: `www.irs.gov` is **still blocked** in this cloud session (proxy 403 / DNS failure for
+    i1040gi, i1040sd, i1099div). To let Claude read them, add `www.irs.gov` under Allowed domains in the
+    environment's Network access settings.
+  - Sakshi opened the IRS pages herself on 2026-11-02 and supplied quotes. Those items are now quoted in config
+    comments and marked "confirmed by Sakshi from the IRS page, 2026-11-02" (table below).
+  - Comment fixes: forms.yaml header no longer claims W-2 / W-2c labels were checked (marked # UNVERIFIED);
+    the no-Schedule-D note now says Form 1040 **line 7a** (confirmed); the 1099-DIV:4 comment no longer
+    claims the source names box 4; the 1099-DIV instructions (Rev. 01/2024) are noted as "continuous use"
+    (last reviewed 30-Apr-2026), not as an old edition.
+- **`returnguard/validate.py`**: `Finding`, `FieldChange`, `ValidationResult` (frozen pydantic) + `load_forms`,
+  `parse_amount`, `check_identity`, `check_correction_link`, `check_prior_values`, `check_form_rules`,
+  `check_supported_fields`, `diff_fields`, `validate`. Pure and deterministic; all rules read from forms.yaml.
+- **`returnguard/impact.py`**: `ImpactItem`, `load_dependencies`, `find_impact`, `stale_approval_ids`. No box
+  names, lines or approval IDs in the code (grep `'"(1a|1b|2a|4|box)'` finds nothing).
+- **Tests**: `tests/test_validate.py` (50), `tests/test_impact.py` (15). Total 135.
+
+### pytest -q (real output, Session 2)
+```
+........................................................................ [ 53%]
+...............................................................          [100%]
+135 passed in 0.45s
+```
+
+### Finding codes (Session 3 maps categories -> statuses; validate.py decides no status)
+| Code | Category | Raised when |
+| --- | --- | --- |
+| MALFORMED_AMOUNT | INVALID | raw amount has letters / bad comma grouping / empty / not text (e.g. `"86,5OO"`) |
+| NEGATIVE_AMOUNT | INVALID | raw amount starts with `-` |
+| BAD_PRECISION | INVALID | more than 2 decimal places |
+| FORM_RULE_VIOLATION | INVALID | a `rules:` entry in forms.yaml fails (e.g. QUALIFIED_LE_ORDINARY 1b <= 1a) |
+| IDENTITY_MISMATCH | SPECIALIST | form family (`correction.corrects`) or any `identity_fields` value differs |
+| NOT_MARKED_CORRECTED | SPECIALIST | `requires_corrected_flag: true` and CORRECTED not ticked |
+| UNSUPPORTED_FIELD_CHANGE | SPECIALIST | a changed box is not in `fields` or not `supported` |
+| SPECIALIST_FIELD_CHANGE | SPECIALIST | a changed box has `on_change: SPECIALIST_REVIEW` (W-2c box 2) |
+| PRIOR_DOC_MISMATCH | CONFLICT | correction STATES a `corrects_doc_id` different from the accepted doc_id |
+| PRIOR_VALUE_MISMATCH | CONFLICT | style `previous_and_correct` (W-2c): previously reported != accepted (exact Decimal) |
+| NO_SUPPORTED_CHANGE | INFO | no supported field changed |
+
+Results on the fixtures (real run):
+| Case | Findings | Changes | Stale approvals (find_impact) |
+| --- | --- | --- | --- |
+| T1, T3 | none | 1099-DIV 1b 2400.00 -> 1600.00 (-800.00) | APR-1040-L3A, APR-QDCG-WS |
+| T2 | none | 1a 3200.00 -> 3700.00 (+500.00) | APR-1040-L3B |
+| T4 | none | W-2 1 82000.00 -> 86500.00 (+4500.00) | APR-1040-L1A, APR-WAGE-WP |
+| T5 | PRIOR_VALUE_MISMATCH / CONFLICT | (box 1 diff still reported) | (see known issue 1) |
+| T6 | SPECIALIST_FIELD_CHANGE / SPECIALIST | W-2 2 9000.00 -> 9800.00 | APR-1040-L25A |
+| T8 | IDENTITY_MISMATCH / SPECIALIST (payer_tin 00-0000001 vs 00-0000009) | 1b diff reported | — |
+| T9 | FORM_RULE_VIOLATION / INVALID (1b=3500.00, 1a=3200.00) | 1b diff reported | — |
+| T10 | MALFORMED_AMOUNT / INVALID (W-2c:1, "86,5OO") + NO_SUPPORTED_CHANGE / INFO | none | none |
+| T11 | NOT_MARKED_CORRECTED / SPECIALIST | 1a, 1b, 2a diffs reported | — |
+| T14 | NO_SUPPORTED_CHANGE / INFO | none | none |
+| T15 | UNSUPPORTED_FIELD_CHANGE / SPECIALIST (box 7 Foreign tax paid) + NO_SUPPORTED_CHANGE / INFO | none | none |
+T7, T12, T13 not tested here (duplicates = Session 3; LLM cases = Session 4).
+
+### Decisions made (Session 2)
+1. **Models live in validate.py** (models.py untouched). `FieldChange.form_type` is the form the value lives on in
+   the return: W-2c changes are reported as `W-2` (from `correction.corrects`), so impact keys are `W-2:1`.
+2. **`check_identity`, `check_correction_link`, `check_prior_values` take `config` as a 3rd argument** (the brief
+   showed two); form family, identity fields, corrected-flag policy and correction style all come from config.
+3. **Missing `corrects_doc_id` is not a conflict** (T11 has none); only a stated, different ID is PRIOR_DOC_MISMATCH.
+4. **A box missing from the accepted doc counts as old = 0.00** (T15 box 7: 0.00 -> 45.00 is a change).
+   A box missing from the correction counts as unchanged (no finding).
+5. **`allow_commas: true`** in forms.yaml `amount_rules` (agreed with Sakshi): incoming forms may show
+   `"3,200.00"` / `"$3,200.00"`; correct thousands grouping only. `models.parse_money` (accepted docs) is unchanged
+   and still strict. No code reads `allow_commas`; it documents the rule `parse_amount` enforces.
+6. **`on_change: SPECIALIST_REVIEW` on W-2c box 2 is the specialist marker** (reused; no new key added).
+7. **UNVERIFIED data flag**: YAML comments are invisible to code, so mappings that are still unverified carry
+   `unverified: true`. `ImpactItem.unverified` is True and `source` is prefixed `"UNVERIFIED: "` for them.
+   Set on: APR-QDCG-WS (both edges), APR-1040-L3B, APR-1040-L25B, APR-1040-L1A, APR-1040-L25A
+   (the last four because Sakshi listed them as still unverified). Remove the flag when a page confirms it.
+8. **1b -> line 3a source URL changed to i1040sd**, because that is the page the confirming quote came from.
+9. **find_impact de-duplicates on (field, return line, approval)**, so an approval reached via two fields
+   (1b and 2a -> APR-QDCG-WS) shows both paths; `stale_approval_ids()` gives the distinct set in first-seen order.
+10. Findings order is fixed: parse, identity, link, prior values, form rules, supported fields, info.
+
+### IRS mappings (tax year 2025) — current status
+| Item | Source | Status |
+| --- | --- | --- |
+| 1099-DIV 2a -> Schedule D line 13 | i1040sd | **confirmed by Sakshi, 2026-11-02** (quoted) |
+| No Schedule D -> Form 1040 line **7a** | i1040sd | **confirmed by Sakshi, 2026-11-02** (quoted) |
+| 1099-DIV 1b -> Form 1040 line 3a | i1040sd | **confirmed by Sakshi, 2026-11-02** (quoted) |
+| QDCG worksheet is in 1040 instructions, line 16 | i1040sd | **confirmed by Sakshi, 2026-11-02** (quoted) |
+| Rule 1b <= 1a ("Box 1a includes amounts entered in boxes 1b and 2e") | i1099div | **confirmed by Sakshi, 2026-11-02** (quoted) |
+| 1099-DIV box 4 label, box 7 label | i1099div | **confirmed by Sakshi, 2026-11-02** (quoted) |
+| 1099-DIV instructions Rev. 01/2024 current ("continuous use", reviewed 30-Apr-2026) | i1099div | **confirmed by Sakshi, 2026-11-02** |
+
+**Still UNVERIFIED** (marked `# UNVERIFIED` in config and `unverified: true` where it is a mapping):
+- 1099-DIV 1a -> Form 1040 line 3b
+- W-2 box 1 -> Form 1040 line 1a
+- W-2 box 2 -> Form 1040 line 25a
+- 1099 withholding (1099-DIV box 4) -> Form 1040 line 25b
+- Which Qualified Dividends and Capital Gain Tax Worksheet LINES take 1b / 2a
+- W-2 / W-2c box labels (forms.yaml header)
+
+### Known issues / notes for Session 3
+1. **`changes` are reported even when a blocking finding exists** (T5, T8, T9, T11 list diffs). That is on purpose
+   (validation reports facts); decide.py must NOT apply changes or mark approvals stale when any
+   INVALID / SPECIALIST / CONFLICT finding exists, and must show "nothing changed" for T5.
+2. W-2c with a box that has no `previously_reported` is not flagged (fixtures always have one). Could add a
+   `PRIOR_VALUE_MISSING` (CONFLICT) code if wanted.
+3. A reissued 1099-DIV that omits a box is treated as "unchanged" for that box, not flagged.
+4. Status mapping is Session 3's job: suggested INVALID -> REJECTED_INVALID_INPUT, SPECIALIST -> SPECIALIST_REVIEW,
+   CONFLICT -> CONFLICT, then duplicates (fingerprints), FILED -> POSSIBLE_AMENDMENT, NO_SUPPORTED_CHANGE alone ->
+   DUPLICATE_NO_CHANGE (T14), else APPLY_AND_REREVIEW. Priority order: docs/project_plan.md §5.
+5. Use `python3 -m pytest -q` (pytest.ini handles the import path).
+
+### Next: Session 3
+`decide.py` (category -> status, priority order, filing status), `audit.py` (SHA-256 evidence fingerprints over
+each approval's `based_on` fields, append-only log, T7 duplicate), `cli.py`, + tests.
+
+---
+
 ## Status after Session 1 (skeleton, schemas, config, fixtures). Date: 2026-11-02
 
 ### Done
@@ -61,34 +179,6 @@
 9. **T10** fixture uses `"86,5OO"`; the negative-amount variant is covered in `tests/test_models.py`.
 10. **T13** expected status = APPLY_AND_REREVIEW (same correction as T1; "status unchanged").
 11. Each case file states `return_status` explicitly (T3 = FILED, all others APPROVED) instead of overriding the baseline file.
-12. `tests/test_models.py` inserts the repo root into `sys.path` so plain `pytest -q` works without installing the package.
-    Cleaner: add `pytest.ini` with `pythonpath = .` (a file not on Session 1's allowed list; ask first).
+12. ~~`tests/test_models.py` sys.path hack~~ removed in Session 2; `pytest.ini` now sets `pythonpath = .`.
 
-### Mappings and sources (tax year 2025)
-`www.irs.gov` was **blocked by this cloud session's network policy** (DNS failure), so the IRS pages could not be opened
-directly. Each mapping was checked against IRS-site **search excerpts** of the cited page. Re-open each URL in a browser
-once before the demo.
-
-| Field | Return line | Approval | Source | Status |
-| --- | --- | --- | --- | --- |
-| 1099-DIV 1b | Form 1040 line 3a | APR-1040-L3A | https://www.irs.gov/instructions/i1040gi | confirmed via search excerpt |
-| 1099-DIV 1b | QDCG Tax Worksheet | APR-QDCG-WS | https://www.irs.gov/instructions/i1040gi | **UNVERIFIED** (worksheet inputs, "line 16" from general knowledge) |
-| 1099-DIV 1a | Form 1040 line 3b | APR-1040-L3B | https://www.irs.gov/instructions/i1040gi | confirmed via search excerpt |
-| 1099-DIV 2a | Schedule D line 13 | APR-SCHD-L13 | https://www.irs.gov/instructions/i1040sd | confirmed via search excerpt (if no Schedule D required, goes on 1040 line 7 instead) |
-| 1099-DIV 2a | QDCG Tax Worksheet | APR-QDCG-WS | https://www.irs.gov/instructions/i1040gi | **UNVERIFIED** |
-| 1099-DIV 4 | Form 1040 line 25b | APR-1040-L25B | https://www.irs.gov/instructions/i1040gi ; https://www.irs.gov/pub/irs-pdf/f1040.pdf | confirmed via search excerpt |
-| W-2 1 | Form 1040 line 1a | APR-1040-L1A | https://www.irs.gov/instructions/i1040gi | confirmed via search excerpt |
-| W-2 1 | Wage workpaper | APR-WAGE-WP | internal (synthetic, not an IRS line) | n/a |
-| W-2 2 | Form 1040 line 25a | APR-1040-L25A | https://www.irs.gov/instructions/i1040gi | confirmed via search excerpt |
-| Rule 1b <= 1a | box 1b is included in 1a | — | https://www.irs.gov/instructions/i1099div (Rev. Jan 2024 PDF: https://www.irs.gov/pub/irs-pdf/i1099div.pdf) ; 1040 instr. line 3a | confirmed via search excerpt (Pub. 17 wording) |
-
-UNVERIFIED items to check:
-- The QDCG worksheet inputs (which worksheet lines take 1040 line 3a and Schedule D / 2a) and that it sits under 1040 line 16.
-- Whether the 2025 Form 1040 numbers capital gains as line 7 or 7a (an IRS FAQ excerpt mentioned "line 7a").
-  This only matters if a "no Schedule D" path is added.
-
-### Next: Session 2
-`returnguard/validate.py` + `returnguard/impact.py` + tests: identity checks (client, tax year, payer TIN),
-CORRECTED flag (T11), W-2c previously-reported vs accepted (T5), form rule 1b <= 1a (T9), raw amount parsing
-(T10), supported-field checks (T6 via `on_change`, T15 via `unsupported_fields`), and the dependency walk ->
-stale approvals (T1, T2, T4). Read rules from config only.
+(Session 1's mapping table is superseded by the Session 2 table above.)
