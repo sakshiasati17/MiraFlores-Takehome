@@ -1,0 +1,16 @@
+SYNTHETIC - NOT A REAL TAX DOCUMENT
+Invented data for the ReturnGuard prototype (case T12). No real taxpayer, payer or employer.
+
+FORM 1099-DIV    DIVIDENDS AND DISTRIBUTIONS    TAX YEAR 2025
+[X] CORRECTED
+
+PAYER'S name: Synthetic Growth Fund
+PAYER'S TIN: 00-0000001
+RECIPIENT: Synthetic Client C-001
+
+1a Total ordinary dividends ............ $3,200.00
+1b Qualified dividends ................. $1,600.00
+2a Total capital gain distributions .... $500.00
+4  Federal income tax withheld ......... $0.00
+
+SYNTHETIC - NOT A REAL TAX DOCUMENT

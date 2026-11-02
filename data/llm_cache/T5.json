@@ -1,0 +1,22 @@
+{
+  "mocked": true,
+  "_label": "MOCKED: recorded LLM output for the prototype",
+  "synthetic": true,
+  "case_id": "T5",
+  "source_text_file": "data/synthetic/raw/T5.txt",
+  "model": "claude-opus-5-5 (MOCKED: hand-recorded, no API call was made)",
+  "prompt_version": "extract-v1",
+  "recorded_at": "2026-11-02T00:00:00Z",
+  "extraction": {
+    "form_type": "W-2c",
+    "corrected": true,
+    "payer_or_employer_tin": "00-0000002",
+    "tax_year": 2025,
+    "fields": {
+      "1": {
+        "value": "86,500.00",
+        "previously_reported": "81,000.00"
+      }
+    }
+  }
+}
