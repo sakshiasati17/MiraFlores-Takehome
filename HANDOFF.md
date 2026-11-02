@@ -6,6 +6,119 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after Session 3 (decide.py + audit.py + cli.py). Date: 2026-11-02
+Branch: `returnguard/session-3-decide-audit-cli`, merged into `main`. Commits as `sakshiasati17`.
+
+### Done
+- **Step 0 (validate.py, small change)**: new `check_completeness()` (style read from forms.yaml), called in
+  `validate()` after the prior-value check.
+  - `MISSING_PRIOR_VALUE` / SPECIALIST: style `previous_and_correct` (W-2c), a box whose value CHANGES but has
+    no `previously_reported`. An unchanged box without it is fine.
+  - `MISSING_FIELD` / SPECIALIST: style `reissue` (1099-DIV), a box the accepted doc has but the correction omits.
+  - Neither fires on any existing fixture (tested). Tested with in-memory variants of T4 / T1 only.
+- **`returnguard/audit.py`**: `fingerprint`, `correction_fingerprint`, `with_baseline_fingerprints`, `new_version`,
+  `is_stale`, `AuditLog` (append / read only), `log_record`.
+- **`returnguard/decide.py`**: `decide()`, `load_config()`, `ProcessingState`, `Decision` (+ `ProposedChange`,
+  `StaleApproval`, `DecisionEvidence`), `NEXT_ACTION`, `naive_total_changed()`, `signed()`.
+- **`cli.py`** (repo root): report / `--json` / `--all` / `--log PATH`.
+- **Tests**: `test_decide.py` (77), `test_audit.py` (17), `test_cli.py` (7), `test_validate.py` +15 (Step 0). Total 251.
+
+### pytest -q (real output, Session 3)
+```
+........................................................................ [ 28%]
+........................................................................ [ 57%]
+........................................................................ [ 86%]
+...................................                                      [100%]
+251 passed in 1.82s
+```
+
+### Status mapping (decide.py, first match wins; written at the top of the file)
+1. any INVALID finding -> REJECTED_INVALID_INPUT
+2. any SPECIALIST finding -> SPECIALIST_REVIEW
+3. any CONFLICT finding -> CONFLICT
+4. same correction fingerprint already in `state`, or NO_SUPPORTED_CHANGE -> DUPLICATE_NO_CHANGE
+5. return status FILED -> POSSIBLE_AMENDMENT
+6. otherwise -> APPLY_AND_REREVIEW
+
+`python3 cli.py --all` (real run): T1–T11, T14, T15 all `match` (T7 = APPLY_AND_REREVIEW, DUPLICATE_NO_CHANGE);
+T12 / T13 skipped ("LLM case: Session 4").
+
+### Decision fields (`returnguard.decide.Decision`, frozen pydantic)
+| Field | Meaning |
+| --- | --- |
+| `status` | one of the six statuses |
+| `reasons` | plain English: docs compared, each finding message (INFO only when nothing blocking), each change, "nothing changed" (1–4) or new version + each stale path (5–6), FILED note, "No approval has been granted or cleared automatically." |
+| `proposed_changes` | every `FieldChange` + label. `applied` = True only for APPLY_AND_REREVIEW; `applied_as_new_version` = True for 5–6. So T3 (FILED) is recorded as a new version but NOT applied. |
+| `stale_approvals` | 5–6 only, one per approval: `paths`, `sources` (prefixed `UNVERIFIED: `), `unverified`, `fingerprint_before/after`. Empty for 1–4. |
+| `evidence` | both doc IDs, accepted values, raw correction values, all findings, return status + MOCKED source |
+| `next_action` | exact wording from the session prompt (`NEXT_ACTION` dict) |
+| `correction_fingerprint` | SHA-256 of the correction (duplicate detection, audit log) |
+| `new_version` | the new document version record (5–6 only), else null |
+| `clears_approvals` | `Literal[False]`: cannot be True (tested) |
+
+### Decisions made (Session 3)
+1. **`Decision` lives in decide.py**, not models.py (models.py untouched; `models.Decision` is now unused by the
+   pipeline). Same pattern as Session 2's `Finding` in validate.py.
+2. **`config` = forms.yaml + dependencies.yaml merged** (`decide.load_config`), so `decide()` keeps the
+   5-argument signature: `validate()` reads `config["forms"]`, `find_impact()` reads `config["dependencies"]`.
+3. **Fingerprint identity = form type + client_id + tax_year + payer_tin, NOT doc_id / version** (approved default):
+   a new version is comparable field by field, and the same content re-sent under a new doc ID is still a duplicate.
+   Values are 2-dp strings, sorted keys, compact JSON. A missing box is `null` (differs from `"0.00"`).
+4. **Correction fingerprint** covers every box's value and previously_reported (parsed to 2 dp, so `"$3,200"` ==
+   `"3200.00"`) plus the CORRECTED flag; unparseable amounts are kept as `"RAW:<text>"` (T10).
+5. **Baseline approval fingerprints** are computed at load time (`with_baseline_fingerprints`) from the accepted
+   doc of the approval's form; fixture files are never edited. `is_stale` compares against the stored fingerprint
+   (or computes it) vs the new-version fingerprint, using only based_on fields on that form.
+6. **`is_stale(approval, accepted, correction, config)`** takes `config` as a 4th argument (needed to parse the
+   correction and map W-2c -> W-2), like Session 2's checks.
+7. **New version record** = an `AcceptedDocument` with the correction's doc_id, version + 1, supported changes
+   applied, label "SYNTHETIC: … Proposed for CPA re-review; not approved." Accepted object never modified (tested).
+8. **Naive baseline** (`NAIVE_TOTAL_FIELD = {"1099-DIV": "1a"}` in decide.py) is for comparison only, never used to
+   decide. It's the only box name in decide.py; W-2c reports show no naive line.
+9. Test fix (no expected value changed): fixture deltas are written unsigned when positive (`"4500.00"`) while
+   the CLI prints `+4500.00`; the test compares deltas as Decimals.
+
+### How state / duplicates work
+- `ProcessingState` (in memory): `seen` = correction fingerprint -> first doc_id; `versions` = new version records.
+- `decide()` records every correction's fingerprint (any status) and stores the new version for 5–6.
+- A repeat fingerprint -> DUPLICATE_NO_CHANGE (priority 4, so a repeated INVALID/SPECIALIST/CONFLICT keeps its
+  higher status). `decide()` always compares against the `accepted` passed in, not the latest version in state.
+- **One fresh state per fixture** (CLI `--all` and tests); submissions inside one fixture (T7) share it. So T1 and
+  T13 (identical values) never mark each other duplicate (tested).
+- Audit log: `AuditLog(path).append()` opens in `"a"` mode only; one JSON line per decision: timestamp, case_id,
+  both doc IDs, correction fingerprint, status, stale approval IDs, applied changes, new_version_doc_id,
+  clears_approvals. T7 log shows exactly one applied change (tested). Tests use `tmp_path`.
+
+### CLI usage
+```
+python3 cli.py data/synthetic/cases/T1.json          # readable report (status, changes, stale paths, reasons, next action)
+python3 cli.py data/synthetic/cases/T1.json --json   # Decision as JSON (a list for multi-submission cases like T7)
+python3 cli.py --all                                 # table: case, expected, actual, match; exit 1 on any mismatch
+python3 cli.py --all --log /tmp/x.jsonl              # audit log elsewhere (default out/audit_log.jsonl, gitignored)
+```
+
+### Known issues / notes
+1. **T12 has empty `fields`**: with Step 0 it now raises MISSING_FIELD for all four boxes (-> SPECIALIST_REVIEW).
+   Session 4 must fill fields from extraction before `decide()`; the expected status is SPECIALIST_REVIEW anyway.
+2. T5 still lists the box 1 change in `proposed_changes` (marked "proposed, not applied") so the CPA sees what the
+   W-2c claims; nothing is applied, no version, no stale approvals.
+3. `naive_total_changed` is defined only for 1099-DIV (box 1a); add a form to `NAIVE_TOTAL_FIELD` if needed.
+4. Only DIRECT dependencies are walked (unchanged from Session 2).
+5. The CLI appends to `out/audit_log.jsonl` on every run (by design; it's append-only and gitignored).
+6. `models.Decision` / `ChangedField` / `Evidence` are now unused by the pipeline but kept (models.py not in scope).
+
+### Still UNVERIFIED IRS items (unchanged from Session 2)
+1099-DIV 1a -> 1040 line 3b; W-2 box 1 -> line 1a; W-2 box 2 -> line 25a; 1099-DIV box 4 -> line 25b;
+which QDCG worksheet lines take 1b / 2a; W-2 / W-2c box labels. The CLI shows `[UNVERIFIED]` on these.
+
+### Next: Session 4
+`extract.py` (LLM extraction, cached by default from `data/llm_cache/`, labelled MOCKED; every amount must
+appear in `source_text` next to its box label, else UNVERIFIED -> SPECIALIST_REVIEW) and `explain.py` (grounded
+reviewer note; any number not in the Decision's facts -> template note). Then remove T12/T13 from `cli.LLM_CASES`
+and wire them into `run_case`.
+
+---
+
 ## Status after Session 2 (validate.py + impact.py). Date: 2026-11-02
 Branch: `returnguard/session-2-validate-impact`, merged into `main`.
 
