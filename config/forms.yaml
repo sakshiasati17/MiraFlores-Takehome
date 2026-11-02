@@ -4,20 +4,28 @@
 #
 # Sources (box meanings):
 #   Form 1099-DIV instructions: https://www.irs.gov/instructions/i1099div
-#     (PDF, Rev. January 2024: https://www.irs.gov/pub/irs-pdf/i1099div.pdf)
+#     (PDF, Rev. January 2024: https://www.irs.gov/pub/irs-pdf/i1099div.pdf). This edition is
+#     current: the page says the form and instructions are now "continuous use"
+#     (last reviewed 30-Apr-2026); confirmed by Sakshi from the IRS page, 2026-11-02.
 #   Form 1040 (2025) instructions: https://www.irs.gov/instructions/i1040gi
 #   Form W-2/W-3 (W-2c section) instructions: https://www.irs.gov/instructions/iw2w3
 #   About Form W-2c: https://www.irs.gov/forms-pubs/about-form-w-2-c
-# Note: www.irs.gov was not reachable from the Session 1 sandbox; box meanings
-# below were checked via IRS-site search excerpts of the pages above. See HANDOFF.md.
+# Note: www.irs.gov was not reachable from the Session 1 or Session 2 sandbox.
+# 1099-DIV boxes 1b, 4 and 7 and the 1b <= 1a rule were confirmed by Sakshi from the IRS page, 2026-11-02
+# (quotes next to each item). Other 1099-DIV labels were checked via IRS-site search excerpts.
+# W-2 / W-2c box labels (box 1 wages, box 2 federal income tax withheld) were NOT
+# checked against an opened IRS page.  # UNVERIFIED (W-2 / W-2c labels). See HANDOFF.md.
 
 version: 1
 
 # Money rules applied to every supported field (enforced by returnguard.models.parse_money).
+# Raw correction amounts are parsed by returnguard.validate.parse_amount: a leading "$"
+# and correct thousands grouping ("3,200.00") are accepted on incoming forms; letters,
+# signs and bad grouping ("86,5OO") are rejected. Accepted (stored) amounts never carry commas.
 amount_rules:
   decimal_places: 2
   non_negative: true
-  allow_commas: false
+  allow_commas: true
 
 forms:
   "1099-DIV":
@@ -33,7 +41,9 @@ forms:
         label: "Total ordinary dividends"
         supported: true
       "1b":
-        label: "Qualified dividends"   # included in box 1a (Pub. 17 / 1040 instr. line 3a)
+        label: "Qualified dividends"
+        # i1099div: "Box 1a includes amounts entered in boxes 1b and 2e";
+        # "Qualified dividends cannot be less than zero." (confirmed by Sakshi from the IRS page, 2026-11-02)
         supported: true
       "2a":
         label: "Total capital gain distributions"
@@ -41,10 +51,11 @@ forms:
       "4":
         label: "Federal income tax withheld"
         supported: true
+        # i1099div: "Box 4. Federal Income Tax Withheld. Enter backup withholding." (confirmed by Sakshi from the IRS page, 2026-11-02)
     # Known boxes that this prototype does NOT support. Any change to these, or to
     # any box not listed at all, -> SPECIALIST_REVIEW ("field not supported").
     unsupported_fields:
-      "7": "Foreign tax paid"
+      "7": "Foreign tax paid"   # i1099div: "Foreign Tax Paid" (confirmed by Sakshi from the IRS page, 2026-11-02)
     rules:
       - id: QUALIFIED_LE_ORDINARY
         type: lte                      # left <= right
@@ -52,8 +63,8 @@ forms:
         right: "1a"
         status_on_fail: REJECTED_INVALID_INPUT
         message: "Qualified dividends (box 1b) cannot exceed total ordinary dividends (box 1a)."
-        # Source: 1099-DIV box 1b amount is included in box 1a.
-        # https://www.irs.gov/instructions/i1099div ; https://www.irs.gov/instructions/i1040gi (line 3a)
+        # Source: https://www.irs.gov/instructions/i1099div: "Box 1a includes amounts entered
+        # in boxes 1b and 2e" (so 1b can never exceed 1a). confirmed by Sakshi from the IRS page, 2026-11-02.
 
   "W-2":
     title: "Wage and Tax Statement"

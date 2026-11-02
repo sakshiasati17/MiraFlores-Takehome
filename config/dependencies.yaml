@@ -3,10 +3,12 @@
 # Keys are "FORM:box". W-2c corrections map onto the W-2 fields they correct
 # (see forms.yaml: W-2c.correction.corrects).
 #
-# Tax year: 2025. Sources were checked via IRS-site search excerpts on 2026-11-02;
-# www.irs.gov itself was blocked by the Session 1 sandbox network policy, so each
-# mapping should be re-opened in a browser once before the demo (see HANDOFF.md).
-# Anything not confirmed by an IRS source is marked # UNVERIFIED.
+# Tax year: 2025. www.irs.gov was blocked by the Session 1 and Session 2 sandbox network policy.
+# Items marked "confirmed by Sakshi from the IRS page, 2026-11-02" were opened and quoted by Sakshi.
+# Everything else was checked only via IRS-site search excerpts and is marked # UNVERIFIED
+# until someone opens the page (see HANDOFF.md).
+# Anything not confirmed by an IRS source is marked # UNVERIFIED; mappings also carry
+# `unverified: true` so impact.py can show the flag (comments are not visible to code).
 #
 # Scope note: only DIRECT dependencies are modelled. Knock-on effects through totals
 # (e.g. line 9 total income, line 15 taxable income) are out of scope: no tax computation.
@@ -26,61 +28,70 @@ approval_items:
 
 dependencies:
   "1099-DIV:1b":
-    # Source (paraphrased from IRS search excerpt): 2025 Form 1040 instructions, line 3a:
-    # enter total qualified dividends on line 3a; generally shown in box 1b of Form(s) 1099-DIV.
-    # https://www.irs.gov/instructions/i1040gi
-    # Worksheet: line 3a qualified dividends feed the Qualified Dividends and Capital Gain
-    # Tax Worksheet (1040 instructions, line 16).  # UNVERIFIED (from general knowledge, not seen in excerpt)
+    # Source: https://www.irs.gov/instructions/i1040sd (2025): "qualified dividends on Form 1040,
+    # 1040-SR, or 1040-NR, line 3a". confirmed by Sakshi from the IRS page, 2026-11-02.
+    # Worksheet: same page: "complete the Qualified Dividends and Capital Gain Tax Worksheet in the
+    # instructions for Form 1040, line 16". confirmed by Sakshi from the IRS page, 2026-11-02.
+    # Which worksheet LINES take 1b / 2a: # UNVERIFIED
     - return_line: "Form 1040 line 3a"
       approval: APR-1040-L3A
-      source: "https://www.irs.gov/instructions/i1040gi"
+      source: "https://www.irs.gov/instructions/i1040sd"
     - return_line: "Qualified Dividends and Capital Gain Tax Worksheet"
       approval: APR-QDCG-WS
-      source: "https://www.irs.gov/instructions/i1040gi"   # UNVERIFIED: worksheet input line numbers not seen in search excerpt
+      source: "https://www.irs.gov/instructions/i1040gi"   # worksheet is in 1040 instr. line 16 (confirmed); # UNVERIFIED: which worksheet lines
+      unverified: true   # data flag read by impact.py (YAML comments are lost on load)
 
   "1099-DIV:1a":
     # Source (paraphrased from IRS search excerpt): 2025 Form 1040 instructions, line 3b:
     # enter total ordinary dividends on line 3b; this amount should be shown in box 1a of Form(s) 1099-DIV.
-    # https://www.irs.gov/instructions/i1040gi
+    # https://www.irs.gov/instructions/i1040gi   # UNVERIFIED (page not yet opened)
     - return_line: "Form 1040 line 3b"
       approval: APR-1040-L3B
       source: "https://www.irs.gov/instructions/i1040gi"
+      unverified: true
 
   "1099-DIV:2a":
-    # Source: 2025 Schedule D instructions, line 13: enter total capital gain distributions
-    # shown in box 2a of Form(s) 1099-DIV, regardless of holding period.
-    # https://www.irs.gov/instructions/i1040sd
-    # Note: a filer with no Schedule D requirement reports box 2a on Form 1040 line 7 instead
-    # (IRS FAQ, mutual fund distributions). This prototype assumes Schedule D is filed.
+    # Source: https://www.irs.gov/instructions/i1040sd (2025): "Enter on Schedule D, line 13, the
+    # total capital gain distributions paid to you during the year, regardless of how long you held
+    # your investment. This amount is shown in box 2a of Form 1099-DIV." confirmed by Sakshi from the IRS page, 2026-11-02.
+    # Note: capital gain distributions not reported on Schedule D go on Form 1040 line 7a. Same page:
+    # "capital gain distributions not reported directly on Form 1040 or 1040-SR, line 7a".
+    # confirmed by Sakshi from the IRS page, 2026-11-02. This prototype assumes Schedule D is filed.
     - return_line: "Schedule D line 13"
       approval: APR-SCHD-L13
       source: "https://www.irs.gov/instructions/i1040sd"
     - return_line: "Qualified Dividends and Capital Gain Tax Worksheet"
       approval: APR-QDCG-WS
-      source: "https://www.irs.gov/instructions/i1040gi"   # UNVERIFIED: worksheet input line numbers not seen in search excerpt
+      source: "https://www.irs.gov/instructions/i1040gi"   # worksheet is in 1040 instr. line 16 (confirmed); # UNVERIFIED: which worksheet lines
+      unverified: true   # data flag read by impact.py (YAML comments are lost on load)
 
   "1099-DIV:4":
-    # Source: 2025 Form 1040 instructions, line 25b: federal income tax withheld on
-    # Form(s) 1099 (including dividends, Form 1099-DIV box 4) is included on line 25b.
+    # UNVERIFIED (page not yet opened). 2025 Form 1040 instructions, line 25b: federal income tax withheld on
+    # Form(s) 1099 (including dividends) goes on line 25b. The search excerpt did not
+    # name 1099-DIV box 4 itself; box 4 = "Federal income tax withheld" is from the
+    # 1099-DIV box list in config/forms.yaml.
     # https://www.irs.gov/instructions/i1040gi ; form layout https://www.irs.gov/pub/irs-pdf/f1040.pdf
     - return_line: "Form 1040 line 25b"
       approval: APR-1040-L25B
       source: "https://www.irs.gov/instructions/i1040gi"
+      unverified: true
 
   "W-2:1":
-    # Source: 2025 Form 1040 instructions, line 1a: "Enter the total amount from Form(s) W-2, box 1."
+    # UNVERIFIED (page not yet opened). 2025 Form 1040 instructions, line 1a: "Enter the total amount from Form(s) W-2, box 1."
     # https://www.irs.gov/instructions/i1040gi
     - return_line: "Form 1040 line 1a"
       approval: APR-1040-L1A
       source: "https://www.irs.gov/instructions/i1040gi"
+      unverified: true
     - return_line: "Wage workpaper"
       approval: APR-WAGE-WP
       source: "internal workpaper (synthetic; not an IRS line)"
 
   "W-2:2":
-    # Source: 2025 Form 1040 instructions, line 25a: "Add the amounts shown as federal income
+    # UNVERIFIED (page not yet opened). 2025 Form 1040 instructions, line 25a: "Add the amounts shown as federal income
     # tax withheld on your Form(s) W-2 ... The amount withheld should be shown in box 2 of Form W-2."
     # https://www.irs.gov/instructions/i1040gi
     - return_line: "Form 1040 line 25a"
       approval: APR-1040-L25A
       source: "https://www.irs.gov/instructions/i1040gi"
+      unverified: true

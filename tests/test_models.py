@@ -3,13 +3,8 @@
 from __future__ import annotations
 
 import json
-import sys
 from decimal import Decimal
 from pathlib import Path
-
-# Make `import returnguard` work under plain `pytest` from a clean clone (no install step).
-# TODO(Session 2+): replace with `pythonpath = .` in a pytest.ini once that file is allowed.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 import yaml
