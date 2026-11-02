@@ -177,14 +177,19 @@ def decide(
     return_state: ReturnState,
     config: dict,
     state: Optional[ProcessingState] = None,
+    extra_findings: Optional[list[Finding]] = None,
 ) -> Decision:
     """Exactly one Decision for one correction. Inputs are never modified.
 
     config: forms.yaml + dependencies.yaml merged (see load_config()).
     state:  shared between submissions of the same run so a repeated correction is DUPLICATE_NO_CHANGE.
             The state is updated (fingerprint recorded; new version stored for statuses 5-6).
+    extra_findings: findings from outside validate() (Session 4: EXTRACTION_UNVERIFIED from extract.py).
+            They are put first and go through exactly the same category -> status rules.
     """
     result = validate(accepted, correction, config)
+    if extra_findings:
+        result = result.model_copy(update={"findings": [*extra_findings, *result.findings]})
     fp = correction_fingerprint(correction)
     first_seen = state.seen.get(fp) if state is not None else None
     status = _status(result.findings, first_seen is not None, return_state)

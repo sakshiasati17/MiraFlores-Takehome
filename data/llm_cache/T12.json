@@ -1,0 +1,31 @@
+{
+  "mocked": true,
+  "_label": "MOCKED: recorded LLM output for the prototype",
+  "synthetic": true,
+  "case_id": "T12",
+  "source_text_file": "data/synthetic/raw/T12.txt",
+  "model": "claude-opus-5-5 (MOCKED: hand-recorded, no API call was made)",
+  "prompt_version": "extract-v1",
+  "recorded_at": "2026-11-02T00:00:00Z",
+  "_note": "Deliberate misread for test T12: box 1b recorded as 1060.00; the source text says $1,600.00. Code must flag it UNVERIFIED, never fix it.",
+  "extraction": {
+    "form_type": "1099-DIV",
+    "corrected": true,
+    "payer_or_employer_tin": "00-0000001",
+    "tax_year": 2025,
+    "fields": {
+      "1a": {
+        "value": "3,200.00"
+      },
+      "1b": {
+        "value": "1060.00"
+      },
+      "2a": {
+        "value": "500.00"
+      },
+      "4": {
+        "value": "0.00"
+      }
+    }
+  }
+}

@@ -6,6 +6,123 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after Session 4 (extract.py + explain.py: the AI step). Date: 2026-11-02
+Branch: `returnguard/session-4-extract-explain`, merged into `main`. Commits as `sakshiasati17`.
+(The cloud session's auto-assigned `claude/loving-ptolemy-lndqda` branch was NOT used, as agreed.)
+
+### Done
+- **Raw form text** `data/synthetic/raw/T1.txt, T4.txt, T5.txt, T12.txt`: each starts with
+  "SYNTHETIC - NOT A REAL TAX DOCUMENT". 1099-DIV: `[X] CORRECTED`, payer + TIN, recipient C-001, tax year 2025,
+  boxes 1a/1b/2a/4 with `$` and commas. W-2c: employer TIN, tax year, `Box 1 ... | Previously reported $... |
+  Correct information $...`. T12.txt = T1's text (1b is $1,600.00). Values match the fixtures (tested).
+- **Recorded LLM outputs** `data/llm_cache/T1, T4, T5, T12.json, T13_note.json`: `"mocked": true`,
+  `"_label": "MOCKED: recorded LLM output for the prototype"`, `model`, `prompt_version`, extraction in the fixed
+  schema. T12 = T1 except 1b `"1060.00"`. T13_note says "fell by $900.00" (true delta -800.00).
+  These were written by hand; no API call was made (the `model` field says so).
+- **`returnguard/extract.py`**: `EXTRACTION_SCHEMA`, `EXTRACTION_PROMPT`, `check_schema`, `extract`, `verify_extraction`,
+  `findings_from_checks`, `build_correction`, `run_from_text`.
+- **`returnguard/explain.py`**: `template_note`, `grounded_note`, `allowed_numbers`, `numbers_in`, `load_cached_note`.
+- **`returnguard/decide.py`**: ONLY the optional `extra_findings=None` parameter (2 lines + docstring). Extra findings
+  are put first and go through the unchanged category -> status rules. `extra_findings=[]` gives the identical Decision (tested).
+- **`cli.py`**: `--from-text PATH --case ID` (full pipeline report); `--all` runs T12 from text and T13 with note
+  grounding (no case skipped); `cli.py data/synthetic/cases/T12.json` routes through the text pipeline; single-case reports
+  now end with a REVIEWER NOTE section showing its source. `LLM_CASES` is kept (test_decide.py imports it).
+- **`requirements-llm.txt`**: optional `anthropic` SDK only. `requirements.txt` unchanged.
+- **Tests**: `tests/test_extract.py` (41), `tests/test_explain.py` (23), `tests/test_cli.py` +6 (now 13). Total 321.
+
+### pytest -q (real output, Session 4, after commit)
+```
+........................................................................ [ 22%]
+........................................................................ [ 44%]
+........................................................................ [ 67%]
+........................................................................ [ 89%]
+.................................                                        [100%]
+321 passed in 3.72s
+```
+`python3 cli.py --all`: all 15 rows `match` (T12 "SPECIALIST_REVIEW (from text, MOCKED extraction, 1 UNVERIFIED)",
+T13 "APPLY_AND_REREVIEW (LLM note rejected: 900.00; TEMPLATE note)"), exit 0.
+
+### Extraction flow
+`text -> extract() -> verify_extraction() -> findings_from_checks() -> build_correction() -> decide(extra_findings=...)
+-> grounded_note()`. The LLM only fills `EXTRACTION_SCHEMA` (form_type, corrected, payer_or_employer_tin, tax_year,
+fields{box: {value, previously_reported}}); the schema and `check_schema` reject any other key, so it cannot carry a
+status, decision or advice. **Strict rule:** form type, corrected flag, TIN, tax year and every amount come ONLY from the
+extraction. The optional `envelope` (doc_id, client_id, payer_name, corrects_doc_id, received_at = intake details the text
+can't give) comes from the case fixture when there is one, else defaults (`SYN-TEXT-<case>`, client/payer name from the
+accepted doc, no prior doc ID). Any other envelope key raises ValueError (tested).
+
+### Labels
+- Cache record `"mocked": true` -> `MOCKED`; `"live": true` -> `LIVE`. Anything else is an error.
+- CLI prints `EXTRACTION: MOCKED (...)` with model / prompt version / cache file, and `REVIEWER NOTE [source: TEMPLATE |
+  LLM (MOCKED) | LLM (LIVE)]`.
+
+### How verification works (code, not the LLM)
+- Each extracted box: find lines that START with the box id (optionally "Box ") AND contain the box label (labels from
+  forms.yaml `fields` / `unsupported_fields`, else `_FALLBACK_LABELS` in extract.py). Exactly one line must match.
+- 1099-DIV: the part of that line after the box id must hold exactly ONE amount, equal (as Decimal, `$`/commas stripped)
+  to the extracted value. So an amount that exists elsewhere in the text (1b = 3,200.00, which is 1a's amount) does
+  NOT verify (tested).
+- W-2c: "Previously reported" and "Correct information" segments are checked separately (swapped values fail, tested).
+- Header: form name in text; corrected flag must equal whether `[X] CORRECTED` or `Form W-2c` appears; TIN must be on a
+  TIN/EIN line; every "TAX YEAR nnnn" in the text must equal the extracted year.
+- Any failure -> `Finding(code="EXTRACTION_UNVERIFIED", category="SPECIALIST", field="1099-DIV:1b", evidence={extracted,
+  found_in_text, line})` -> SPECIALIST_REVIEW via the existing priority. The extracted value is never replaced (tested:
+  T12's CorrectionDocument still says 1060.00).
+
+### How notes are grounded
+Allowed numbers = old/new/delta (delta with and without sign) of each proposed change, accepted and raw correction values,
+numbers inside box ids, form names, stale-approval ids/items/paths (e.g. 1040, 3 from "line 3a"), finding fields and
+evidence values, both doc IDs (2025, 1099, 13 ...), and the new version's tax year. Numbers in the LLM note are pulled with
+a regex that handles `$`, commas, signs and decimals; a sign is only read when not glued to a word (so "C-001" is 1, not -1).
+Comparison is Decimal (1,600 == 1600.00). Any number not allowed -> note rejected, `rejected_numbers` recorded, template
+used; the rejected draft is kept in `NoteResult.llm_text` for the audit trail. The template only uses Decision fields and
+passes its own check (tested on 9 cases).
+
+### Live mode (optional, never used by tests)
+```
+pip install -r requirements.txt -r requirements-llm.txt
+export RETURNGUARD_LLM=live ANTHROPIC_API_KEY=...        # optional: RETURNGUARD_LLM_MODEL (default claude-opus-5-5)
+python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1
+```
+One `messages.create` call with `EXTRACTION_PROMPT` (schema embedded), output parsed as JSON and passed through
+`check_schema`. Saved to `data/llm_cache/<case>.live.json` labelled `LIVE` with model + timestamp; the MOCKED recordings
+are never overwritten. `RETURNGUARD_LLM=live` without a key -> still cached; `mode="live"` without both -> clear error.
+Tests delete both env vars and monkeypatch `_call_live` to raise; one test stubs it to check the LIVE save path.
+
+### Decisions made (Session 4)
+1. **No `temperature=0` in the live call (deviation from the session prompt).** Current Claude models return HTTP 400 for
+   `temperature` and for forced `tool_choice` (checked against the Claude API reference this session). Determinism comes
+   instead from the fixed prompt + schema, `check_schema`, and code verification. Live mode was NOT run (no key; tests
+   must stay free), so `_call_live` is untested against the real API.
+2. **T12 cache file is `data/llm_cache/T12.json`**, not `T12_extraction.json` as the T12 fixture's `llm_cache` placeholder
+   says. Fixture not edited (no code reads that path). T12/T13 fixture descriptions still start "PLACEHOLDER:" for the
+   same reason.
+3. **`test_all_every_row_matches` updated** (approved): it used to expect "LLM case: Session 4" for T12/T13; it now expects
+   `match` for all 15 rows. No expected status changed. T12's row only matches if an UNVERIFIED field was found; T13's
+   only if the LLM note was rejected.
+4. Cached amounts are stored "as printed" with commas (`"3,200.00"`); validate.py already accepts that, and the
+   correction fingerprint normalises it, so T1-from-text has the same fingerprint as T1-from-JSON (tested).
+5. `run_from_text` takes `accepted` as one document or `{form_type: doc}` (then picks the doc the extracted form
+   corrects), plus `envelope=None` (approved) and `mode=None`.
+
+### Known issues
+1. `_call_live` never exercised against the real API (see decision 1).
+2. Amounts in text must have 2 decimals to be found (`$3,200` without cents does not verify -> UNVERIFIED, safe side).
+3. A box line must contain the config label text; a form that abbreviates labels (Session 1 fixtures' `source_text` uses
+   "Total capital gain distr.") would not verify. Raw files use full labels. Could add aliases in forms.yaml later.
+4. If the extraction omits a box that IS in the text, the reissue MISSING_FIELD check (validate.py) catches it; there is
+   no separate "box in text but not extracted" check.
+5. T12's proposed change shows 2400.00 -> 1060.00 (the unverified value), marked "proposed, not applied", so the reviewer
+   sees exactly what the AI claimed.
+6. Grounding checks numbers, not wording: a note could cite only allowed numbers but describe them wrongly
+   (e.g. "rose by 800.00"). The template is the safe default.
+
+### Next: Session 5
+`app.py` (Streamlit) + `README.md`. Reuse `cli.run_text_case`, `extraction_section` data (`ExtractionReport.checks`),
+`grounded_note`. Show the MOCKED label prominently in the UI.
+
+---
+
 ## Status after Session 3 (decide.py + audit.py + cli.py). Date: 2026-11-02
 Branch: `returnguard/session-3-decide-audit-cli`, merged into `main`. Commits as `sakshiasati17`.
 

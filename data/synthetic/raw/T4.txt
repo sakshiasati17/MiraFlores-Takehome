@@ -1,0 +1,12 @@
+SYNTHETIC - NOT A REAL TAX DOCUMENT
+Invented data for the ReturnGuard prototype (case T4). No real taxpayer, payer or employer.
+
+Form W-2c    Corrected Wage and Tax Statement    TAX YEAR 2025
+
+Employer's name: Synthetic Employer Co
+Employer's TIN (EIN): 00-0000002
+Employee: Synthetic Client C-001
+
+Box 1 Wages, tips, other compensation | Previously reported $82,000.00 | Correct information $86,500.00
+
+SYNTHETIC - NOT A REAL TAX DOCUMENT
