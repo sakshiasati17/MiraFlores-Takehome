@@ -39,6 +39,8 @@ CATEGORY: dict[str, Category] = {
     "NOT_MARKED_CORRECTED": "SPECIALIST",
     "UNSUPPORTED_FIELD_CHANGE": "SPECIALIST",
     "SPECIALIST_FIELD_CHANGE": "SPECIALIST",
+    "MISSING_PRIOR_VALUE": "SPECIALIST",
+    "MISSING_FIELD": "SPECIALIST",
     "PRIOR_DOC_MISMATCH": "CONFLICT",
     "PRIOR_VALUE_MISMATCH": "CONFLICT",
     "NO_SUPPORTED_CHANGE": "INFO",
@@ -270,6 +272,47 @@ def check_prior_values(accepted: AcceptedDocument, correction: CorrectionDocumen
     return findings
 
 
+def check_completeness(accepted: AcceptedDocument, correction: CorrectionDocument, config: dict) -> list[Finding]:
+    """Gaps that make a correction impossible to trust as-is (Session 3, Step 0). Style comes from config.
+
+    previous_and_correct (W-2c): a box whose value changes but has no "previously reported" amount
+                                 -> MISSING_PRIOR_VALUE (we cannot check it against the accepted value).
+    reissue (1099-DIV):          a box the accepted document has but the corrected copy leaves out
+                                 -> MISSING_FIELD (a reissue should show every box).
+    """
+    style = (_form_cfg(config, correction.form_type).get("correction") or {}).get("style")
+    findings: list[Finding] = []
+    if style == "previous_and_correct":
+        changed = {box for box, _, _ in _changed_boxes(accepted, correction)}
+        for box in sorted(correction.fields):
+            if box in changed and correction.fields[box].previously_reported is None:
+                findings.append(
+                    _finding(
+                        "MISSING_PRIOR_VALUE",
+                        f"{correction.form_type} box {box} changes but has no 'previously reported' amount, "
+                        f"so it cannot be checked against accepted {accepted.form_type} {accepted.doc_id}.",
+                        f"{correction.form_type}:{box}",
+                        correction_doc_id=correction.doc_id,
+                        accepted_doc_id=accepted.doc_id,
+                    )
+                )
+    elif style == "reissue":
+        for box in sorted(accepted.fields):
+            if box not in correction.fields:
+                findings.append(
+                    _finding(
+                        "MISSING_FIELD",
+                        f"Corrected {correction.form_type} {correction.doc_id} leaves out box {box}, "
+                        f"which accepted {accepted.doc_id} shows as {accepted.fields[box].amount}.",
+                        f"{correction.form_type}:{box}",
+                        accepted=str(accepted.fields[box].amount),
+                        correction_doc_id=correction.doc_id,
+                        accepted_doc_id=accepted.doc_id,
+                    )
+                )
+    return findings
+
+
 _OPS = {"lte": operator.le, "lt": operator.lt, "gte": operator.ge, "gt": operator.gt, "eq": operator.eq}
 _OP_WORDS = {"lte": "at most", "lt": "less than", "gte": "at least", "gt": "more than", "eq": "equal to"}
 
@@ -345,12 +388,13 @@ def diff_fields(accepted: AcceptedDocument, correction: CorrectionDocument, conf
 
 
 def validate(accepted: AcceptedDocument, correction: CorrectionDocument, config: dict) -> ValidationResult:
-    """Run every check. Findings order: parse, identity, link, prior values, rules, supported fields, info."""
+    """Run every check. Findings order: parse, identity, link, prior values, completeness, rules, supported fields, info."""
     values, _, findings = _parse_correction(correction)
     findings = list(findings)
     findings += check_identity(accepted, correction, config)
     findings += check_correction_link(accepted, correction, config)
     findings += check_prior_values(accepted, correction, config)
+    findings += check_completeness(accepted, correction, config)
     findings += check_form_rules(values, correction.form_type, config)
     findings += check_supported_fields(accepted, correction, config)
     changes = diff_fields(accepted, correction, config)

@@ -255,3 +255,40 @@ def test_validate_does_not_modify_inputs(cid, cfg):
 @pytest.mark.parametrize("cid", ["T1", "T4", "T5", "T8", "T10", "T11", "T15"])
 def test_validate_is_deterministic(cid, cfg):
     assert run(cid, cfg).model_dump() == run(cid, cfg).model_dump()
+
+
+# --- Session 3, Step 0: completeness gaps (in-memory variants; fixture files untouched) ---------
+
+
+def test_w2c_changed_box_without_previously_reported_is_missing_prior_value(cfg):
+    t4 = case("T4")
+    variant = t4.model_copy(update={"fields": {"1": t4.fields["1"].model_copy(update={"previously_reported": None})}})
+    r = validate(accepted("W-2"), variant, cfg)
+    missing = [f for f in r.findings if f.code == "MISSING_PRIOR_VALUE"]
+    assert len(missing) == 1
+    assert missing[0].category == "SPECIALIST"
+    assert missing[0].field == "W-2c:1"
+    assert "box 1" in missing[0].message
+
+
+def test_w2c_unchanged_box_without_previously_reported_is_fine(cfg):
+    t4 = case("T4")
+    same = t4.fields["1"].model_copy(update={"value": "82000.00", "previously_reported": None})
+    r = validate(accepted("W-2"), t4.model_copy(update={"fields": {"1": same}}), cfg)
+    assert "MISSING_PRIOR_VALUE" not in r.codes()
+
+
+def test_reissued_1099div_leaving_out_a_box_is_missing_field(cfg):
+    t1 = case("T1")
+    fields = {k: v for k, v in t1.fields.items() if k != "2a"}
+    r = validate(accepted("1099-DIV"), t1.model_copy(update={"fields": fields}), cfg)
+    missing = [f for f in r.findings if f.code == "MISSING_FIELD"]
+    assert len(missing) == 1
+    assert missing[0].category == "SPECIALIST"
+    assert missing[0].field == "1099-DIV:2a"
+    assert "box 2a" in missing[0].message and "500.00" in missing[0].message
+
+
+@pytest.mark.parametrize("cid", ["T1", "T2", "T3", "T4", "T5", "T6", "T8", "T9", "T10", "T11", "T14", "T15"])
+def test_completeness_checks_do_not_fire_on_existing_fixtures(cid, cfg):
+    assert not {"MISSING_PRIOR_VALUE", "MISSING_FIELD"} & set(run(cid, cfg).codes())
