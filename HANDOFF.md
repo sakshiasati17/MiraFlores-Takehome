@@ -156,7 +156,7 @@ pytest -q (real output, follow-up): `328 passed, 1 skipped in 3.52s` (the skip i
   assuming no `T1.live.json` existed; after the live run the flag correctly replays T1 as LIVE, so the test's premise
   was stale. It now uses T12 (no live file; asserted), still checks the fallback to MOCKED, and expects T12's status
   SPECIALIST_REVIEW.
-- Key handling: the API key was never printed or committed (`git grep "sk-ant"` finds nothing); the temporary copy used
+- Key handling: the API key was never printed or committed (a git grep for the Anthropic key prefix finds nothing); the temporary copy used
   for the run was deleted. The key was pasted in chat, so Sakshi will rotate it.
 - T12 live was not run on purpose: T12 exists to test a misread, and the live check test skips it.
 
