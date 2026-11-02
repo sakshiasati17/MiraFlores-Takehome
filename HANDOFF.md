@@ -141,6 +141,8 @@ the raw text and is SKIPPED while none exist (currently skipped).
 4. T12's proposed 1b value labelled "(unverified extracted value)" everywhere it is shown.
 5. Error text for a missing cache: "no cached extraction for case ..." (was "no recorded extraction").
 Tests: `test_extract.py` 48 (1 skipped: no live file), `test_explain.py` 23, `test_cli.py` 14.
+pytest -q (real output, follow-up): `328 passed, 1 skipped in 3.52s` (the skip is the live-output check: no
+`*.live.json` exists). `python3 cli.py --all`: all 15 rows `match`, exit 0.
 
 ### Next: Session 5
 `app.py` (Streamlit) + `README.md`. Reuse `cli.run_text_case`, `extraction_section` data (`ExtractionReport.checks`),
