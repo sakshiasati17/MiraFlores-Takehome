@@ -15,6 +15,7 @@ from returnguard.models import DecisionStatus as S
 
 ALL_CASES = sorted((p.stem for p in CASES.glob("T*.json")), key=lambda s: int(s[1:]))
 TEXT_CASES = ["T1", "T4", "T5", "T12"]
+REAL_CALL_LIVE = X._call_live  # kept before the autouse fixture replaces it; only ever used with a fake SDK
 
 
 @pytest.fixture(autouse=True)
@@ -56,9 +57,17 @@ def test_raw_text_is_labelled_synthetic(cid):
 @pytest.mark.parametrize("cid", TEXT_CASES + ["T13_note"])
 def test_cache_files_labelled_mocked(cid):
     rec = json.loads((X.CACHE_DIR / f"{cid}.json").read_text())
-    assert rec["mocked"] is True
-    assert rec["_label"] == "MOCKED: recorded LLM output for the prototype"
-    assert rec["model"] and rec["prompt_version"]
+    assert rec["mocked"] is True and "live" not in rec
+    assert rec["_label"] == "MOCKED: hand-written stand-in for an LLM output, not a real model call"
+    assert rec["source"] == "hand-written"
+    assert rec["model"] is None  # no model produced these files
+    assert rec["prompt_version"]
+    assert "recorded" not in json.dumps(rec).lower()  # only real live outputs may say "recorded"
+
+
+def test_T12_cache_says_misread_is_deliberate():
+    rec = json.loads((X.CACHE_DIR / "T12.json").read_text())
+    assert rec["note"] == "deliberate misread injected for testing"
 
 
 @pytest.mark.parametrize("cid", TEXT_CASES)
@@ -103,10 +112,11 @@ def test_raw_text_values_match_fixtures():
 def test_default_mode_is_cached_and_mocked():
     ex = X.extract(text("T1"), "T1")
     assert ex.mode_label == "MOCKED" and ex.fields["1b"]["value"] == "1,600.00"
+    assert ex.source == "hand-written" and ex.model == "" and not ex.replayed_live
 
 
 def test_missing_cache_is_a_clear_error_not_a_guess():
-    with pytest.raises(X.ExtractionError, match="no recorded extraction"):
+    with pytest.raises(X.ExtractionError, match="no cached extraction"):
         X.extract(text("T1"), "T999")
 
 
@@ -127,8 +137,92 @@ def test_live_path_saves_labelled_live_record(monkeypatch, tmp_path):
     ex = X.extract(text("T1"), "T1", cache_dir=tmp_path)
     assert ex.mode_label == "LIVE"
     rec = json.loads((tmp_path / "T1.live.json").read_text())
-    assert rec["live"] is True and rec["model"] and rec["recorded_at"] and "mocked" not in rec
+    assert rec["live"] is True and rec["model"] == "claude-haiku-5-5" and rec["recorded_at"] and "mocked" not in rec
+    assert rec["source"] == "live" and rec["_label"].startswith("LIVE:")
     assert not (tmp_path / "T1.json").exists()  # MOCKED recordings are never overwritten
+
+
+def test_default_live_model_is_haiku_and_overridable(monkeypatch, tmp_path):
+    assert X.DEFAULT_LIVE_MODEL == "claude-haiku-5-5"
+    monkeypatch.setenv("RETURNGUARD_LLM", "live")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-not-a-real-key")
+    monkeypatch.setenv("RETURNGUARD_LLM_MODEL", "claude-sonnet-5-5")
+    seen = {}
+    stub = json.loads((X.CACHE_DIR / "T1.json").read_text())["extraction"]
+    monkeypatch.setattr(X, "_call_live", lambda text, model: seen.setdefault("model", model) and stub)
+    X.extract(text("T1"), "T1", cache_dir=tmp_path)
+    assert seen["model"] == "claude-sonnet-5-5"
+
+
+def test_live_request_leaves_out_params_haiku_rejects(monkeypatch):
+    """Run the real _call_live body against a fake SDK module (no network) and inspect the request."""
+    import sys
+    import types
+
+    calls = []
+    stub = json.loads((X.CACHE_DIR / "T1.json").read_text())["extraction"]
+
+    class FakeMessages:
+        def create(self, **kw):
+            calls.append(kw)
+            block = types.SimpleNamespace(type="text", text=json.dumps(stub))
+            return types.SimpleNamespace(stop_reason="end_turn", content=[types.SimpleNamespace(type="thinking"), block])
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = lambda: types.SimpleNamespace(messages=FakeMessages())
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+    out = REAL_CALL_LIVE(text("T1"), "claude-haiku-5-5")  # the real request-building code, fake transport
+    assert out == stub
+    (kw,) = calls
+    assert kw["model"] == "claude-haiku-5-5"
+    assert not {"temperature", "top_p", "top_k", "thinking", "tool_choice"} & set(kw)
+    assert kw["messages"][-1]["role"] == "user"  # no assistant prefill
+    assert kw["output_config"] == {"effort": "low"}
+
+
+# --- --use-live-cache ---------------------------------------------------------------------------
+
+
+def test_use_live_cache_replays_live_file(tmp_path):
+    stub = json.loads((X.CACHE_DIR / "T1.json").read_text())["extraction"]
+    (tmp_path / "T1.json").write_text((X.CACHE_DIR / "T1.json").read_text())
+    (tmp_path / "T1.live.json").write_text(json.dumps({"live": True, "_label": "LIVE: test", "source": "live",
+                                                        "model": "claude-haiku-5-5", "extraction": stub}))
+    ex = X.extract(text("T1"), "T1", cache_dir=tmp_path, use_live_cache=True)
+    assert ex.mode_label == "LIVE" and ex.replayed_live and ex.model == "claude-haiku-5-5"
+    assert X.extract(text("T1"), "T1", cache_dir=tmp_path).mode_label == "MOCKED"  # flag off: MOCKED file
+
+
+def test_use_live_cache_falls_back_to_mocked_when_no_live_file(tmp_path):
+    (tmp_path / "T1.json").write_text((X.CACHE_DIR / "T1.json").read_text())
+    ex = X.extract(text("T1"), "T1", cache_dir=tmp_path, use_live_cache=True)
+    assert ex.mode_label == "MOCKED" and not ex.replayed_live
+
+
+def test_live_file_must_be_labelled_live(tmp_path):
+    stub = json.loads((X.CACHE_DIR / "T1.json").read_text())["extraction"]
+    (tmp_path / "T1.live.json").write_text(json.dumps({"mocked": True, "extraction": stub}))
+    with pytest.raises(X.ExtractionError, match="live"):
+        X.extract(text("T1"), "T1", cache_dir=tmp_path, use_live_cache=True)
+
+
+LIVE_FILES = sorted(X.CACHE_DIR.glob("*.live.json"))
+
+
+@pytest.mark.skipif(not LIVE_FILES, reason="no data/llm_cache/*.live.json recorded yet (live mode never run)")
+@pytest.mark.parametrize("path", LIVE_FILES, ids=[p.name for p in LIVE_FILES])
+def test_recorded_live_outputs_verify_against_raw_text(path, cfg):
+    """IF a real live output exists, its values must pass the same source check as the MOCKED files."""
+    cid = path.name[: -len(".live.json")]
+    raw = RAW / f"{cid}.txt"
+    if not raw.exists():
+        pytest.skip(f"no raw text for {cid}")
+    if cid == "T12":
+        pytest.skip("T12 exists to test a misread; a correct live read of it is allowed but not required")
+    ex = X.extract(raw.read_text(), cid, use_live_cache=True)
+    assert ex.mode_label == "LIVE" and ex.replayed_live
+    bad = [c for c in X.verify_extraction(ex, raw.read_text(), cfg) if not c.verified]
+    assert not bad, bad
 
 
 def test_requirements_keep_sdk_optional():
@@ -215,6 +309,10 @@ def test_T12_specialist_review_extraction_unverified(cfg):
     assert any("EXTRACTION UNVERIFIED".lower() in r.lower() for r in d.reasons)
     assert d.stale_approvals == [] and d.new_version is None
     assert not any(c.applied or c.applied_as_new_version for c in d.proposed_changes)
+    from returnguard.explain import UNVERIFIED_TAG, template_note, unverified_boxes
+
+    assert unverified_boxes(d) == {"1b"}
+    assert f"1060.00 {UNVERIFIED_TAG}" in template_note(d)
 
 
 def test_T1_from_text_equals_T1_from_json(cfg):

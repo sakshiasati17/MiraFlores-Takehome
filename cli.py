@@ -19,7 +19,7 @@ from pathlib import Path
 
 from returnguard.audit import DEFAULT_LOG, AuditLog, log_record
 from returnguard.decide import Decision, ProcessingState, decide, load_config, naive_total_changed, signed
-from returnguard.explain import NoteResult, grounded_note, load_cached_note
+from returnguard.explain import UNVERIFIED_TAG, NoteResult, grounded_note, load_cached_note, unverified_boxes
 from returnguard.extract import ENVELOPE_KEYS, ExtractionReport, run_from_text
 from returnguard.models import AcceptedDocument, CaseFixture, CorrectionDocument, ReturnState, ReturnStatus
 
@@ -29,7 +29,7 @@ CASES = SYN / "cases"
 RAW = SYN / "raw"
 # Cases whose fixture alone is not the input (Session 4). They are no longer skipped:
 #   T12: the form TEXT goes through extraction (data/synthetic/raw/T12.txt + data/llm_cache/T12.json, MOCKED).
-#   T13: the fixture is decided normally, then the recorded LLM note (data/llm_cache/T13_note.json) is grounded.
+#   T13: the fixture is decided normally, then the hand-written MOCKED note (data/llm_cache/T13_note.json) is grounded.
 LLM_TEXT_CASES = {"T12"}
 LLM_NOTE_CASES = {"T13"}
 LLM_CASES = LLM_TEXT_CASES | LLM_NOTE_CASES
@@ -78,13 +78,14 @@ def envelope_from(fixture: CaseFixture | None) -> dict | None:
 
 
 def run_text_case(text: str, case_id: str, config: dict, fixture: CaseFixture | None = None,
-                  log: AuditLog | None = None) -> tuple[AcceptedDocument, Decision, ExtractionReport]:
-    """Form text -> extraction (MOCKED unless live mode is on) -> source check -> decide()."""
+                  log: AuditLog | None = None, use_live_cache: bool = False) -> tuple[AcceptedDocument, Decision, ExtractionReport]:
+    """Form text -> extraction (MOCKED unless live mode is on, or a .live.json replay) -> source check -> decide()."""
     rs = load_return_state()
     if fixture is not None:
         rs = rs.model_copy(update={"status": fixture.return_status})
     accepted = load_accepted()
-    d, rep = run_from_text(text, case_id, accepted, rs, config, ProcessingState(), envelope=envelope_from(fixture))
+    d, rep = run_from_text(text, case_id, accepted, rs, config, ProcessingState(), envelope=envelope_from(fixture),
+                           use_live_cache=use_live_cache)
     if log is not None:
         log.append(log_record(case_id, d))
     target = ((config["forms"].get(rep.correction.form_type) or {}).get("correction") or {}).get(
@@ -114,11 +115,13 @@ def report(fixture: CaseFixture | None, results: list[tuple[AcceptedDocument, De
         lines.append(f"Return status: {d.evidence.return_status} ({d.evidence.return_status_source})")
         lines.append("")
         lines.append("What changed:")
+        unverified = unverified_boxes(d)
         if d.proposed_changes:
             for c in d.proposed_changes:
                 tag = "applied as new version" if c.applied else (
                     "recorded as new version, NOT applied" if c.applied_as_new_version else "proposed, not applied")
-                lines.append(f"  {c.form_type} box {c.field} {c.label}: {c.old} -> {c.new}  delta {signed(c.delta)}  [{tag}]")
+                uv = f" {UNVERIFIED_TAG}" if c.field in unverified else ""
+                lines.append(f"  {c.form_type} box {c.field} {c.label}: {c.old} -> {c.new}{uv}  delta {signed(c.delta)}  [{tag}]")
         else:
             lines.append("  nothing")
         lines.append("")
@@ -135,7 +138,11 @@ def report(fixture: CaseFixture | None, results: list[tuple[AcceptedDocument, De
             lines.append("  none (nothing changed)")
         lines.append("")
         lines.append("Reasons:")
-        lines += [f"  - {r}" for r in d.reasons]
+        for r in d.reasons:  # display only: mark change lines whose new value failed the source check
+            for c in d.proposed_changes:
+                if c.field in unverified and r.startswith(f"{c.form_type} box {c.field} "):
+                    r = r.replace(f"-> {c.new} ", f"-> {c.new} {UNVERIFIED_TAG} ", 1)
+            lines.append(f"  - {r}")
         naive = naive_total_changed(acc, sub)
         if naive is not None:
             lines.append("")
@@ -149,9 +156,15 @@ def report(fixture: CaseFixture | None, results: list[tuple[AcceptedDocument, De
 
 def extraction_section(rep: ExtractionReport) -> str:
     ex = rep.extraction
+    where = Path(ex.cache_path).relative_to(ROOT) if ex.cache_path.startswith(str(ROOT)) else ex.cache_path
+    if ex.mode_label == "MOCKED":
+        detail = f"  source: hand-written stand-in, no model was called   prompt: {ex.prompt_version}   file: {where}"
+    else:
+        how = "replayed from a recorded live output, no API call this run" if ex.replayed_live else "live model call"
+        detail = f"  source: {how}   model: {ex.model}   prompt: {ex.prompt_version}   recorded output: {where}"
     lines = [
         f"EXTRACTION: {ex.mode_label}  ({ex.raw.get('_label', '')})",
-        f"  model: {ex.model}   prompt: {ex.prompt_version}   recorded output: {Path(ex.cache_path).relative_to(ROOT) if ex.cache_path.startswith(str(ROOT)) else ex.cache_path}",
+        detail,
         "  The LLM only reads the text. Code checks every value against the source line; the LLM never sets a status.",
         "Source check (code):",
     ]
@@ -227,6 +240,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--all", action="store_true", help="run every fixture and print expected vs actual")
     ap.add_argument("--from-text", metavar="PATH", help="corrected-form text to run through the AI pipeline")
     ap.add_argument("--case", dest="case_id", help="case id for --from-text (selects data/llm_cache/<id>.json)")
+    ap.add_argument("--use-live-cache", action="store_true",
+                    help="replay data/llm_cache/<case>.live.json (a recorded LIVE output) when it exists; no API call")
     ap.add_argument("--log", default=str(DEFAULT_LOG), help="append-only audit log path (default out/audit_log.jsonl)")
     args = ap.parse_args(argv)
 
@@ -239,10 +254,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.from_text:
         case_id = args.case_id or Path(args.from_text).stem
         fx = _fixture_or_none(case_id)
-        acc, d, rep = run_text_case(Path(args.from_text).read_text(), case_id, config, fx, log)
+        acc, d, rep = run_text_case(Path(args.from_text).read_text(), case_id, config, fx, log,
+                                    use_live_cache=args.use_live_cache)
         note = grounded_note(d, load_cached_note(case_id))
         if args.json:
             print(json.dumps({"extraction_label": rep.extraction.mode_label,
+                              "extraction_source": rep.extraction.source,
                               "checks": [c.__dict__ for c in rep.checks],
                               "decision": d.model_dump(mode="json"),
                               "note": note.__dict__}, indent=2, default=str))
@@ -254,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
     fx = load_fixture(args.case)
     if fx.case_id in LLM_TEXT_CASES:
         return main([f"--from-text={RAW / (fx.case_id + '.txt')}", "--case", fx.case_id, "--log", args.log]
-                    + (["--json"] if args.json else []))
+                    + (["--json"] if args.json else []) + (["--use-live-cache"] if args.use_live_cache else []))
     results = run_case(fx, config, log)
     if args.json:
         payload = [d.model_dump(mode="json") for _, d in results]

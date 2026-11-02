@@ -92,7 +92,8 @@ def test_from_text_T1_report(tmp_path):
     r = cli_offline("--from-text", "data/synthetic/raw/T1.txt", "--case", "T1", tmp_path=tmp_path)
     assert r.returncode == 0, r.stderr
     out = r.stdout
-    assert "EXTRACTION: MOCKED" in out and "MOCKED: recorded LLM output for the prototype" in out
+    assert "EXTRACTION: MOCKED" in out and "MOCKED: hand-written stand-in for an LLM output, not a real model call" in out
+    assert "source: hand-written stand-in, no model was called" in out and "recorded" not in out.split("STATUS")[0]
     assert "VERIFIED    1099-DIV:1b: 1,600.00" in out and "UNVERIFIED  1099-DIV" not in out
     assert "all values verified against the text" in out
     assert "STATUS:  APPLY_AND_REREVIEW" in out and "-800.00" in out
@@ -106,6 +107,8 @@ def test_from_text_T12_shows_both_values(tmp_path):
     assert "EXTRACTION: MOCKED" in out
     assert "UNVERIFIED  1099-DIV:1b: extracted 1060.00 | text shows 1600.00" in out
     assert "STATUS:  SPECIALIST_REVIEW" in out and "none (nothing changed)" in out
+    assert "2400.00 -> 1060.00 (unverified extracted value)" in out
+    assert all("(unverified extracted value)" in ln for ln in out.splitlines() if "-> 1060.00" in ln)
 
 
 def test_T13_case_file_shows_rejected_note(tmp_path):
@@ -131,4 +134,10 @@ def test_from_text_json(tmp_path):
 
 def test_from_text_unknown_case_is_clear_error(tmp_path):
     r = cli_offline("--from-text", "data/synthetic/raw/T1.txt", "--case", "T999", tmp_path=tmp_path)
-    assert r.returncode != 0 and "no recorded extraction" in r.stderr
+    assert r.returncode != 0 and "no cached extraction" in r.stderr
+
+
+def test_use_live_cache_without_live_file_falls_back_to_mocked(tmp_path):
+    r = cli_offline("--from-text", "data/synthetic/raw/T1.txt", "--case", "T1", "--use-live-cache", tmp_path=tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "EXTRACTION: MOCKED" in r.stdout and "STATUS:  APPLY_AND_REREVIEW" in r.stdout
