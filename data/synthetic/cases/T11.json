@@ -1,0 +1,47 @@
+{
+  "synthetic": true,
+  "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+  "case_id": "T11",
+  "angle": "Ambiguous",
+  "description": "New 1099-DIV from the same payer, CORRECTED box NOT ticked, values differ from accepted.",
+  "return_status": "APPROVED",
+  "submissions": [
+    {
+      "synthetic": true,
+      "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+      "doc_id": "SYN-1099DIV-C001-2025-T11-NEW",
+      "form_type": "1099-DIV",
+      "client_id": "C-001",
+      "tax_year": 2025,
+      "payer_name": "Synthetic Growth Fund",
+      "payer_tin": "00-0000001",
+      "corrected": false,
+      "corrects_doc_id": null,
+      "received_at": "2026-03-20T12:00:00Z",
+      "fields": {
+        "1a": {
+          "value": "1800.00"
+        },
+        "1b": {
+          "value": "900.00"
+        },
+        "2a": {
+          "value": "0.00"
+        },
+        "4": {
+          "value": "0.00"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "status": "SPECIALIST_REVIEW",
+    "deltas": {},
+    "stale_approvals": [],
+    "must_show": [
+      "could be a second account",
+      "not treated as a correction",
+      "no approval is granted or cleared automatically"
+    ]
+  }
+}

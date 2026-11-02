@@ -1,0 +1,95 @@
+{
+  "synthetic": true,
+  "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+  "client_id": "C-001",
+  "tax_year": 2025,
+  "status": "APPROVED",
+  "status_source": "MOCKED: entered by hand (MiraFlores does not yet track IRS acceptance)",
+  "accepted_doc_ids": [
+    "SYN-1099DIV-C001-2025-v1",
+    "SYN-W2-C001-2025-v1"
+  ],
+  "approvals": [
+    {
+      "id": "APR-1040-L1A",
+      "item": "Form 1040 line 1a: wages",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "W-2:1"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-WAGE-WP",
+      "item": "Wage workpaper (W-2 tie-out)",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "W-2:1"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-1040-L3A",
+      "item": "Form 1040 line 3a: qualified dividends",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "1099-DIV:1b"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-QDCG-WS",
+      "item": "Qualified Dividends and Capital Gain Tax Worksheet",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "1099-DIV:1b",
+        "1099-DIV:2a"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-1040-L3B",
+      "item": "Form 1040 line 3b: ordinary dividends",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "1099-DIV:1a"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-SCHD-L13",
+      "item": "Schedule D line 13: capital gain distributions",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "1099-DIV:2a"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-1040-L25A",
+      "item": "Form 1040 line 25a: withholding from W-2",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "W-2:2"
+      ],
+      "evidence_fingerprint": null
+    },
+    {
+      "id": "APR-1040-L25B",
+      "item": "Form 1040 line 25b: withholding from 1099",
+      "approved_by": "SYN-CPA-01",
+      "approved_at": "2026-03-01T15:00:00Z",
+      "based_on": [
+        "1099-DIV:4"
+      ],
+      "evidence_fingerprint": null
+    }
+  ]
+}

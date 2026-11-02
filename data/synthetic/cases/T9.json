@@ -1,0 +1,46 @@
+{
+  "synthetic": true,
+  "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+  "case_id": "T9",
+  "angle": "Form rule",
+  "description": "Corrected 1099-DIV: box 1b 3500.00 > box 1a 3200.00.",
+  "return_status": "APPROVED",
+  "submissions": [
+    {
+      "synthetic": true,
+      "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+      "doc_id": "SYN-1099DIV-C001-2025-T9",
+      "form_type": "1099-DIV",
+      "client_id": "C-001",
+      "tax_year": 2025,
+      "payer_name": "Synthetic Growth Fund",
+      "payer_tin": "00-0000001",
+      "corrected": true,
+      "corrects_doc_id": "SYN-1099DIV-C001-2025-v1",
+      "received_at": "2026-03-20T12:00:00Z",
+      "fields": {
+        "1a": {
+          "value": "3200.00"
+        },
+        "1b": {
+          "value": "3500.00"
+        },
+        "2a": {
+          "value": "500.00"
+        },
+        "4": {
+          "value": "0.00"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "status": "REJECTED_INVALID_INPUT",
+    "deltas": {},
+    "stale_approvals": [],
+    "must_show": [
+      "qualified dividends cannot exceed total ordinary dividends",
+      "no approval is granted or cleared automatically"
+    ]
+  }
+}

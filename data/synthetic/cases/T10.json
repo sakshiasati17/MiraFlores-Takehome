@@ -1,0 +1,39 @@
+{
+  "synthetic": true,
+  "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+  "case_id": "T10",
+  "angle": "Malformed",
+  "description": "W-2c box 1 correct amount is \"86,5OO\" (comma and letter O). Negative amounts are covered in tests/test_models.py.",
+  "return_status": "APPROVED",
+  "submissions": [
+    {
+      "synthetic": true,
+      "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+      "doc_id": "SYN-W2C-C001-2025-T10",
+      "form_type": "W-2c",
+      "client_id": "C-001",
+      "tax_year": 2025,
+      "payer_name": "Synthetic Employer Co",
+      "payer_tin": "00-0000002",
+      "corrected": true,
+      "corrects_doc_id": "SYN-W2-C001-2025-v1",
+      "received_at": "2026-03-22T12:00:00Z",
+      "fields": {
+        "1": {
+          "previously_reported": "82000.00",
+          "value": "86,5OO"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "status": "REJECTED_INVALID_INPUT",
+    "deltas": {},
+    "stale_approvals": [],
+    "must_show": [
+      "field name: W-2c box 1",
+      "bad value: 86,5OO",
+      "no approval is granted or cleared automatically"
+    ]
+  }
+}
