@@ -1,0 +1,91 @@
+# ReturnGuard form definitions and validation rules.
+# Rules live here, not in code: adding a form or field (e.g. 1099-INT) should be
+# an edit to this file + config/dependencies.yaml + a fixture + a test.
+#
+# Sources (box meanings):
+#   Form 1099-DIV instructions: https://www.irs.gov/instructions/i1099div
+#     (PDF, Rev. January 2024: https://www.irs.gov/pub/irs-pdf/i1099div.pdf)
+#   Form 1040 (2025) instructions: https://www.irs.gov/instructions/i1040gi
+#   Form W-2/W-3 (W-2c section) instructions: https://www.irs.gov/instructions/iw2w3
+#   About Form W-2c: https://www.irs.gov/forms-pubs/about-form-w-2-c
+# Note: www.irs.gov was not reachable from the Session 1 sandbox; box meanings
+# below were checked via IRS-site search excerpts of the pages above. See HANDOFF.md.
+
+version: 1
+
+# Money rules applied to every supported field (enforced by returnguard.models.parse_money).
+amount_rules:
+  decimal_places: 2
+  non_negative: true
+  allow_commas: false
+
+forms:
+  "1099-DIV":
+    title: "Dividends and Distributions"
+    kind: source                       # an accepted source document
+    identity_fields: [client_id, tax_year, payer_tin]
+    correction:
+      style: reissue                   # corrected copy reissues all boxes, CORRECTED box ticked
+      corrects: "1099-DIV"
+      requires_corrected_flag: true    # unticked + values differ -> SPECIALIST_REVIEW (T11)
+    fields:
+      "1a":
+        label: "Total ordinary dividends"
+        supported: true
+      "1b":
+        label: "Qualified dividends"   # included in box 1a (Pub. 17 / 1040 instr. line 3a)
+        supported: true
+      "2a":
+        label: "Total capital gain distributions"
+        supported: true
+      "4":
+        label: "Federal income tax withheld"
+        supported: true
+    # Known boxes that this prototype does NOT support. Any change to these, or to
+    # any box not listed at all, -> SPECIALIST_REVIEW ("field not supported").
+    unsupported_fields:
+      "7": "Foreign tax paid"
+    rules:
+      - id: QUALIFIED_LE_ORDINARY
+        type: lte                      # left <= right
+        left: "1b"
+        right: "1a"
+        status_on_fail: REJECTED_INVALID_INPUT
+        message: "Qualified dividends (box 1b) cannot exceed total ordinary dividends (box 1a)."
+        # Source: 1099-DIV box 1b amount is included in box 1a.
+        # https://www.irs.gov/instructions/i1099div ; https://www.irs.gov/instructions/i1040gi (line 3a)
+
+  "W-2":
+    title: "Wage and Tax Statement"
+    kind: source
+    identity_fields: [client_id, tax_year, payer_tin]   # payer_tin = employer EIN
+    fields:
+      "1":
+        label: "Wages, tips, other compensation"
+        supported: true
+      "2":
+        label: "Federal income tax withheld"
+        supported: true
+
+  "W-2c":
+    title: "Corrected Wage and Tax Statement"
+    kind: correction
+    identity_fields: [client_id, tax_year, payer_tin]
+    correction:
+      style: previous_and_correct      # each box shows "Previously reported" and "Correct information"
+      corrects: "W-2"
+      requires_corrected_flag: false   # a W-2c is a correction by definition
+      # previously_reported must equal the accepted W-2 value, else CONFLICT (T5).
+      prior_value_mismatch_status: CONFLICT
+    fields:
+      "1":
+        label: "Wages, tips, other compensation"
+        supported: true
+      "2":
+        label: "Federal income tax withheld"
+        supported: true
+        # Withholding corrections need professional review (docs/project_plan.md §4, T6).
+        on_change: SPECIALIST_REVIEW
+        on_change_reason: "Federal withholding (Box 2) corrections need professional review."
+    unsupported_fields: {}
+    rules: []

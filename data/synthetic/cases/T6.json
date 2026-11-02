@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+  "case_id": "T6",
+  "angle": "Unsupported",
+  "description": "W-2c changes box 2 (federal withholding) 9000.00 -> 9800.00.",
+  "return_status": "APPROVED",
+  "submissions": [
+    {
+      "synthetic": true,
+      "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+      "doc_id": "SYN-W2C-C001-2025-T6",
+      "form_type": "W-2c",
+      "client_id": "C-001",
+      "tax_year": 2025,
+      "payer_name": "Synthetic Employer Co",
+      "payer_tin": "00-0000002",
+      "corrected": true,
+      "corrects_doc_id": "SYN-W2-C001-2025-v1",
+      "received_at": "2026-03-22T12:00:00Z",
+      "fields": {
+        "2": {
+          "previously_reported": "9000.00",
+          "value": "9800.00"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "status": "SPECIALIST_REVIEW",
+    "deltas": {},
+    "stale_approvals": [],
+    "must_show": [
+      "withholding corrections need professional review",
+      "no approval is granted or cleared automatically"
+    ]
+  }
+}

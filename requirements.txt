@@ -1,0 +1,5 @@
+# Pinned versions (Session 1). Python 3.11+.
+pydantic==2.13.5
+PyYAML==6.0.3
+pytest==9.2.0
+streamlit==1.66.1

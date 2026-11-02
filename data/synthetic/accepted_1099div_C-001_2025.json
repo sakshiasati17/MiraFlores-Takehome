@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "_label": "SYNTHETIC: invented data for the ReturnGuard prototype. No real taxpayer, payer or employer.",
+  "doc_id": "SYN-1099DIV-C001-2025-v1",
+  "version": 1,
+  "form_type": "1099-DIV",
+  "client_id": "C-001",
+  "tax_year": 2025,
+  "payer_name": "Synthetic Growth Fund",
+  "payer_tin": "00-0000001",
+  "accepted_at": "2026-02-20T10:00:00Z",
+  "fields": {
+    "1a": {
+      "amount": "3200.00",
+      "source": "1099-DIV box 1a"
+    },
+    "1b": {
+      "amount": "2400.00",
+      "source": "1099-DIV box 1b"
+    },
+    "2a": {
+      "amount": "500.00",
+      "source": "1099-DIV box 2a"
+    },
+    "4": {
+      "amount": "0.00",
+      "source": "1099-DIV box 4"
+    }
+  }
+}
