@@ -72,7 +72,10 @@ The cloud session's auto-assigned `claude/sweet-carson-qi1ewb` branch was NOT us
 3. If `RETURNGUARD_LLM=live` and a key are set when the UI runs, text cases call the API and overwrite `.live.json`
    (the UI shows a warning). A `mode` argument on `cli.run_text_case` would let the UI force cached mode.
 4. Long W-2c lines scroll horizontally in the evidence panel at laptop width.
-5. Streamlit prints "missing ScriptRunContext" warnings when helpers run outside `streamlit run` (harmless).
+5. **GitHub default branch is `returnguard-setup`** (at 478898f, Session 4 code, no app.py), not `main`. A plain
+   `git clone` gets old code. README now clones with `-b main`. Sakshi: set the default branch to `main` in GitHub
+   Settings -> General -> Default branch (or delete `returnguard-setup`).
+6. Streamlit prints "missing ScriptRunContext" warnings when helpers run outside `streamlit run` (harmless).
 
 ### Next: Session 6
 Fresh-eyes review from a clean clone -> `REVIEW.md` (report only, no code fixes). Suggested checks: follow the README
