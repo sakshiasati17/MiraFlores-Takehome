@@ -4,6 +4,9 @@
 > `CLAUDE.md` holds the rules. The MiraFlores brief (MiraFlores's own material) and the outdated v1 design memo
 > were removed from the repo in the final cleanup; `docs/project_plan.md` is the source of truth for the design.
 
+## Final status (submission). Date: 2026-11-02
+All earlier "Open" items below are resolved: README time log filled (about 3 h 20 min), GitHub default branch is `main`, requirements-llm.txt comment updated. The written submission is sent separately, not stored in the repo. Still open by design: F4, F8, F11 and the unverified IRS mappings (see README Known limitations).
+
 ## Status after final polish. Date: 2026-11-02
 Branch `returnguard/final-polish` (from origin/main 11dfebf), merged into `main`. Commits as `sakshiasati17`.
 Done (REVIEW.md F5, F6, F9, F10, F12, F13 fixed): form types come from `config/forms.yaml` (models accept any name; a form not
