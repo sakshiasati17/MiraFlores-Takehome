@@ -371,28 +371,11 @@ and code verification of every value against the source text. **The UI never cal
 
 ## 12. Time log
 
-Commit times in Pacific time (PST, as git prints it) from
-`TZ=America/Los_Angeles git log --reverse --format='%h %ad %s' --date=format-local:'%H:%M %Z'`.
-The first commit marks the build start.
-
-| Phase | First commit | Last commit |
-| --- | --- | --- |
-| Setup: rules, brief, plan (build start) | 10:41 PST `33fde96` | 10:57 PST `bdb6e99` |
-| Session 1: skeleton, schemas, config, fixtures | 11:01 PST `7807988` | 11:03 PST `9979e40` (merge PR #1) |
-| Session 2: validate + impact | 11:15 PST `4f1234c` | 11:15 PST `902f2a4` |
-| Session 3: decide + audit + CLI | 11:28 PST `9c9cf9c` | 11:28 PST `cf17284` |
-| Session 4: extract + explain, follow-up, live run | 11:41 PST `cb6aba1` | 11:55 PST `1c4aebd` |
-| Session 5: UI + README | 12:05 PST `cd0255c` | 12:09 PST `30973e4` |
-| Session 5b: polish fixes | 12:23 PST `5735a04` | 12:24 PST `0dc82ed` |
-| Session 6: fresh-eyes review (REVIEW.md) | 15:52 PST `6428456` | 16:30 PST `11dfebf` |
-| Final polish: config-driven forms, `--live`, grounding, wording | 16:45 PST `2796aec` | 16:47 PST (merge into `main`) |
-
-**Build commits: 10:41–12:24 PST and 15:52–16:47 PST** (git times), about **2 h 40 min**. I paused for about 3 hours
-after hitting a daily usage limit; there was no work in between.
-
-Research, problem selection and original memo, done earlier: about 0.5 hours.
-
-Total: about 3.2 hours.
+Time spent: about 3 h 10 min on the case study itself: about 30 min of planning, plus a core
+build of about 2 h 40 min (10:41–12:24 and 15:52–16:47 PST). After that came final verification,
+repository cleanup and documentation: 16:47–17:47, plus final documentation corrections from
+20:47 to 20:55 PST. I paused for about three hours after hitting a daily usage limit and did no work
+in between.
 
 ## 13. What I'd investigate next
 

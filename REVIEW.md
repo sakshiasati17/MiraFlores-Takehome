@@ -1,5 +1,48 @@
 # REVIEW — Session 6 fresh-eyes review (ReturnGuard)
 
+## Current status (latest run)
+
+**Verdict for current `main`: GO.** From a fresh clone with no API key and no network: `python3 -m pytest -q` ->
+**364 passed**; `python3 cli.py --all` -> **15 of 15 match**, exit 0; the app serves HTTP 200. Default branch is `main`,
+and it is the only branch.
+
+**Earlier findings now FIXED (commit that fixed it):**
+
+| Finding | Fix |
+| --- | --- |
+| F1 GitHub default branch was an older setup branch | Default switched to `main` in GitHub settings (no commit); stale README note removed in `dd48b3c` |
+| F2 README quick start ran `streamlit` before tests/CLI | `6428456` |
+| F5 failed live call printed a traceback | `2796aec` (one line, exit 1) |
+| F6 "nothing changed" wording on blocked statuses | `2796aec` ("Nothing has been applied") |
+| F9 AI-note check let ids pass as money ("$3.00", "$2,025.00") | `2796aec` |
+| F10 a new form needed a Python change | `2796aec` (form types from config; 1099-INT test on a temp copy) |
+| F12 `cli.py --all` followed the shell's live setting | `2796aec` (only `--live` calls the API) |
+| F13 unknown AI form type raised an error | `2796aec` (`UNKNOWN_FORM_TYPE` -> SPECIALIST_REVIEW) |
+| README / sidebar / `requirements-llm.txt` wording (section ref, MOCKED stand-ins, `RETURNGUARD_LLM=live`) | `dd48b3c`, `01bdd5e` |
+| MiraFlores brief and outdated v1 memo in the repo | `930972e`, `47b1c72` (removed; still in older commits) |
+
+F3 (tests encoding an old rule go red during a live config change) is expected behaviour, now documented in the
+README "How to add a form" section (`b79010d`). F7 (content-only fingerprints) is by design.
+
+**Limitations that REMAIN:**
+- **F4:** stale approvals come from `config/dependencies.yaml` and are not cross-checked against the return state
+  (stated in the README limitations).
+- **F8:** abbreviated box labels on a form do not verify; this fails safe (UNVERIFIED -> SPECIALIST_REVIEW).
+- **F11:** wording only: fingerprints are recorded as evidence; staleness comes from the dependency map.
+- **IRS mappings still marked unverified** (`unverified: true` in `config/dependencies.yaml`):
+  1099-DIV:1b -> Qualified Dividends and Capital Gain Tax Worksheet (APR-QDCG-WS);
+  1099-DIV:1a -> Form 1040 line 3b (APR-1040-L3B);
+  1099-DIV:2a -> Qualified Dividends and Capital Gain Tax Worksheet (APR-QDCG-WS);
+  1099-DIV:4 -> Form 1040 line 25b (APR-1040-L25B);
+  W-2:1 -> Form 1040 line 1a (APR-1040-L1A);
+  W-2:2 -> Form 1040 line 25a (APR-1040-L25A).
+  Also `# UNVERIFIED` in `config/forms.yaml`: the W-2 / W-2c box labels.
+
+---
+
+**HISTORICAL:** everything below is the original Session 6 review of `main` @ `0dc82ed` (341 tests), kept unchanged
+as evidence. Its "not ready to submit" verdict and its 341-test results are superseded by the section above.
+
 > Update after final polish (16:47 PST): findings F5, F6, F9, F10, F12 and F13 are fixed on main
 > (364 tests pass). F4 is now listed as a README limitation; F8 and F11 are unchanged.
 > Repo cleanup: `docs/brief.md` and `docs/memo_v1.md`, cited below, were removed from the repo; the written submission is sent separately.
@@ -8,7 +51,7 @@ Reviewer role: a strict MiraFlores reviewer who had not seen the repo. Report on
 changed. The only files touched are this one, a README quick-start reorder (section 10) and a short HANDOFF entry.
 Date: 2026-11-02. Reviewed commit: `main` @ `0dc82ed`. Python 3.13.18, Linux.
 
-## 1. Summary verdict
+## 1. Summary verdict (HISTORICAL)
 
 **PASS for the prototype.** A clean clone of `main` installs, and all 341 tests pass. All 15 cases match their expected status, deltas and stale approvals. The UI renders every demo case correctly, and no API key or network is needed.
 Safety holds under my own checks: 24 decisions checked, 0 with `clears_approvals` True, and the UI makes 0 API calls even in live mode with a key set.
@@ -16,7 +59,7 @@ A full read of `main` adds two caveats: a new *form* needs a 2-line Python chang
 **Not ready to submit as-is:** `docs/writeup.md` (the ≤4-page explanation) is not in the repo. The GitHub default branch still serves an older
 version, and the README time totals are still placeholders.
 
-## 2. Clean-run log (STEP 1)
+## 2. Clean-run log (STEP 1, HISTORICAL)
 
 Run in a new folder, in a new venv, with `ANTHROPIC_API_KEY`, `RETURNGUARD_LLM` and `RETURNGUARD_LLM_MODEL` unset.
 
@@ -34,7 +77,7 @@ Run in a new folder, in a new venv, with `ANTHROPIC_API_KEY`, `RETURNGUARD_LLM` 
 
 No step needed a key or network access. `git status` was clean after every run, including a failed live call.
 
-## 3. Tests and every case (STEP 2)
+## 3. Tests and every case (STEP 2, HISTORICAL: 341-test run)
 
 ### `python3 -m pytest -q` (full output)
 ```
