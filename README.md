@@ -375,8 +375,7 @@ and code verification of every value against the source text. **The UI never cal
 - **Start (first commit):** 2026-11-02 10:41 PST (`33fde96`)
 - **End (last work commit):** 2026-11-02 21:13 PST (`c45954e`)
 
-Times from `TZ=America/Los_Angeles git log --date=format-local:'%Y-%m-%d %H:%M %Z'`. Time spent: about 4 h 30 min
-of working time. Two pauses after hitting daily usage limits, when no work was done, are excluded.
+Times from `TZ=America/Los_Angeles git log --date=format-local:'%Y-%m-%d %H:%M %Z'`. Time spent: about 3 h 20 min of hands-on work: about 30 min of planning, a core build of about 2 h 40 min (10:41–12:24 and 15:52–16:47 PST), and about 10 min of final documentation fixes. Commits continue until 17:46 because Claude Code ran automated verification and repository cleanup during that time, with short instructions and reviews from me. I paused twice after hitting daily usage limits and did no work during the pauses. The commits after 20:55 are final wording fixes to this README.
 
 ## 13. What I'd investigate next
 
