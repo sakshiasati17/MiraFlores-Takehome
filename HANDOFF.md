@@ -6,6 +6,20 @@
 > `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
 > Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
 
+## Status after final polish. Date: 2026-11-02
+Branch `returnguard/final-polish` (from origin/main 11dfebf), merged into `main`. Commits as `sakshiasati17`.
+Done (REVIEW.md F5, F6, F9, F10, F12, F13 fixed): form types come from `config/forms.yaml` (models accept any name; a form not
+in config -> `UNKNOWN_FORM_TYPE` / SPECIALIST_REVIEW in `decide.py` before `validate()`; the live prompt lists the forms from config,
+prompt `extract-v2`); the API is called ONLY with CLI `--live` + `ANTHROPIC_API_KEY` (`RETURNGUARD_LLM` does nothing, `--all`
+always replays); a failed live call prints one line and exits 1; money tokens in AI notes must be real amounts/deltas; blocked
+statuses say "Nothing has been applied". README: "How to add a form", live commands, time log; T5/T12 screenshots retaken.
+Tests: new `test_new_form_via_config.py` (1099-INT on a temp copy, byte-identical Python), `test_cli_live_safety.py`, 6 grounding
+tests. Existing tests changed only for the new wording and the `--live` switch (no expected status, amount or fixture changed).
+`python3 -m pytest -q`: `364 passed in 7.05s`. `python3 cli.py --all`: 15 of 15 match, exit 0.
+Open: README `[RESEARCH AND MEMO TIME]` / `[TOTAL]` (Sakshi); `docs/writeup.md` not in repo; GitHub default branch is still
+`returnguard-setup`; `requirements-llm.txt` comment still says "needs RETURNGUARD_LLM=live" (file not in this session's scope).
+Still open from REVIEW.md: F4 (stale list not cross-checked with return state), F8 (abbreviated labels), F11 (wording only).
+
 ## Status after Session 6 (fresh-eyes review). Date: 2026-11-02
 Review done from a clean clone of `main` @ 0dc82ed; full report in **`REVIEW.md`**. Branch `returnguard/session-6-review`, merged into `main`.
 Verdict: prototype PASS (341 passed, 15 of 15 match, safety PASS, UI makes 0 API calls in live mode). Only README change: quick start runs pytest/CLI before `streamlit run`.
@@ -33,7 +47,7 @@ Branch: `returnguard/session-5b-polish` (from origin/main 30973e4), merged into 
    changed, because the All cases tab runs T12 through `run_all` -> `run_text_case` with the default mode, which would
    have called the API in live mode. Fixed by the same passthrough.
    New test `test_app_never_calls_the_api_even_in_live_mode`: sets `RETURNGUARD_LLM=live` + a dummy key, asserts
-   `live_enabled()` is True, patches `extract._call_live` to raise, then renders T1 (toggle ON -> LIVE replay, OFF ->
+   `live_enabled()` is True (final polish: `live_enabled()` removed; the test now asserts `has_api_key()`), patches `extract._call_live` to raise, then renders T1 (toggle ON -> LIVE replay, OFF ->
    MOCKED) and T12; all render with the expected status. Plus `test_fixture_descriptions_have_no_placeholder`.
 4. **Form-text panel wraps** (`white-space: pre-wrap; overflow-wrap: anywhere`, no `overflow-x`). Checked in Chromium at
    1100px width: panel scrollWidth == clientWidth (344 == 344), no sideways scroll.
@@ -82,7 +96,7 @@ The cloud session's auto-assigned `claude/sweet-carson-qi1ewb` branch was NOT us
   writes the audit log.
   - Sidebar: case picker (T1, T12, T5, T3, T4 with headline labels, then T2, T6-T11, T13-T15 by fixture angle),
     toggle "Use saved live AI outputs where available" (default ON -> `use_live_cache=True`; T1/T4/T5 replay
-    `.live.json` = LIVE, T12 falls back to MOCKED), About box, and a warning if `RETURNGUARD_LLM=live` + key are set
+    `.live.json` = LIVE, T12 falls back to MOCKED), About box, and a warning if `RETURNGUARD_LLM=live` + key are set (superseded: Session 5b removed the warning; since final polish the env variable does nothing)
     (text cases would then call the API; `run_text_case` has no mode argument).
   - Main ("Case review" tab), top to bottom: header + "Synthetic data · prototype" tag; status banner (coloured left
     border, next action, "Nothing is ever approved automatically."); naive check vs ReturnGuard cards (1099-DIV only);
@@ -132,7 +146,7 @@ The cloud session's auto-assigned `claude/sweet-carson-qi1ewb` branch was NOT us
 2. T12/T13 fixture `description` and `llm_cache.status` still start "PLACEHOLDER: ... built in Session 4".
    The UI strips the "PLACEHOLDER: " prefix in the sidebar caption (display only); the CLI still prints it.
    Fixture text should be cleaned in a data-scoped session.
-3. If `RETURNGUARD_LLM=live` and a key are set when the UI runs, text cases call the API and overwrite `.live.json`
+3. (Resolved in 5b; since final polish `RETURNGUARD_LLM=live` does nothing.) If `RETURNGUARD_LLM=live` and a key are set when the UI runs, text cases call the API and overwrite `.live.json`
    (the UI shows a warning). A `mode` argument on `cli.run_text_case` would let the UI force cached mode.
 4. Long W-2c lines scroll horizontally in the evidence panel at laptop width.
 5. **GitHub default branch is `returnguard-setup`** (at 478898f, Session 4 code, no app.py), not `main`. A plain
@@ -225,10 +239,12 @@ used; the rejected draft is kept in `NoteResult.llm_text` for the audit trail. T
 passes its own check (tested on 9 cases).
 
 ### Live mode (optional, never used by tests)
+**Superseded by final polish:** live now needs the CLI `--live` flag plus `ANTHROPIC_API_KEY`; `RETURNGUARD_LLM=live`
+alone does nothing and `--all` never calls the API. Current commands:
 ```
 pip install -r requirements.txt -r requirements-llm.txt
-export RETURNGUARD_LLM=live ANTHROPIC_API_KEY=...        # optional: RETURNGUARD_LLM_MODEL (default claude-haiku-5-5)
-python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1
+export ANTHROPIC_API_KEY=...        # optional: RETURNGUARD_LLM_MODEL (default claude-haiku-5-5)
+python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1 --live
 # later, replay that real output with no API call:
 python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1 --use-live-cache
 ```
@@ -239,8 +255,8 @@ thinks by default and thinking counts toward `max_tokens`, so the cap is generou
 `max_tokens` or `refusal` stop is an error (no partial extraction). Output parsed as JSON and passed through `check_schema`.
 The real output is recorded to `data/llm_cache/<case>.live.json` (`"live": true`, `"source": "live"`, model, `recorded_at`);
 the hand-written MOCKED files are never overwritten. `--use-live-cache` (or `use_live_cache=True`) replays the `.live.json`
-when it exists, labelled LIVE, else falls back to the MOCKED file. `RETURNGUARD_LLM=live` without a key -> still cached;
-`mode="live"` without both -> clear error. Tests delete both env vars and monkeypatch `_call_live` to raise; one test stubs
+when it exists, labelled LIVE, else falls back to the MOCKED file. (Session 4 behaviour, superseded by final polish: `RETURNGUARD_LLM=live` without a key -> still cached;
+`mode="live"` without both -> clear error.) Tests delete both env vars and monkeypatch `_call_live` to raise; one test stubs
 it to check the LIVE save path; one runs the real `_call_live` body against a FAKE `anthropic` module to check the request
 leaves out the rejected parameters. `test_recorded_live_outputs_verify_against_raw_text` checks any `*.live.json` against
 the raw text and is SKIPPED while none exist (currently skipped).
@@ -286,7 +302,8 @@ pytest -q (real output, follow-up): `328 passed, 1 skipped in 3.52s` (the skip i
 `*.live.json` exists). `python3 cli.py --all`: all 15 rows `match`, exit 0.
 
 ### Live run (2026-11-02, T1 / T4 / T5)
-- `RETURNGUARD_LLM=live python3 cli.py --from-text data/synthetic/raw/<case>.txt --case <case>` with `claude-haiku-5-5`.
+- `RETURNGUARD_LLM=live python3 cli.py --from-text data/synthetic/raw/<case>.txt --case <case>` with `claude-haiku-5-5`
+  (the Session 4 switch, prompt `extract-v1`; today the same run is `python3 cli.py --from-text ... --case <case> --live`).
   Each first call succeeded. Saved `data/llm_cache/T1.live.json`, `T4.live.json`, `T5.live.json` (`"live": true`,
   `"source": "live"`, model, `recorded_at`). Every value VERIFIED against the source text (T1 8/8, T4 6/6, T5 6/6).
   Statuses: T1 APPLY_AND_REREVIEW (-800.00), T4 APPLY_AND_REREVIEW (+4500.00), T5 CONFLICT, matching expected.

@@ -5,6 +5,11 @@
   python3 cli.py --all                                 every fixture: expected vs actual
   python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1
                                                        AI pipeline: extract (MOCKED by default) -> verify -> decide -> note
+  python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1 --live
+                                                       the ONLY way to call the API (also needs ANTHROPIC_API_KEY)
+
+Saved outputs are replayed unless --live is passed. No environment variable turns live mode on, and --all
+always replays saved outputs.
 
 Each fixture gets its own fresh ProcessingState; submissions inside one fixture (T7) share it.
 Every decision is appended to the audit log (default out/audit_log.jsonl; change with --log).
@@ -20,7 +25,7 @@ from pathlib import Path
 from returnguard.audit import DEFAULT_LOG, AuditLog, log_record
 from returnguard.decide import Decision, ProcessingState, decide, load_config, naive_total_changed, signed
 from returnguard.explain import UNVERIFIED_TAG, NoteResult, grounded_note, load_cached_note, unverified_boxes
-from returnguard.extract import ENVELOPE_KEYS, ExtractionReport, run_from_text
+from returnguard.extract import ENVELOPE_KEYS, ExtractionReport, pick_accepted, run_from_text
 from returnguard.models import AcceptedDocument, CaseFixture, CorrectionDocument, ReturnState, ReturnStatus
 
 ROOT = Path(__file__).resolve().parent
@@ -55,8 +60,7 @@ def run_case(fixture: CaseFixture, config: dict, log: AuditLog | None = None) ->
     state = ProcessingState()
     out = []
     for sub in fixture.submissions:
-        target = ((config["forms"].get(sub.form_type) or {}).get("correction") or {}).get("corrects", sub.form_type)
-        acc = accepted[target]
+        acc = pick_accepted(sub.form_type, sub.payer_tin, accepted, config)  # target form from config, never a crash
         d = decide(acc, sub, rs, config, state)
         if log is not None:
             log.append(log_record(fixture.case_id, d))
@@ -82,8 +86,8 @@ def run_text_case(text: str, case_id: str, config: dict, fixture: CaseFixture | 
                   mode: str | None = None) -> tuple[AcceptedDocument, Decision, ExtractionReport]:
     """Form text -> extraction (MOCKED unless live mode is on, or a .live.json replay) -> source check -> decide().
 
-    mode: passed to extract(). None (default, used by the CLI) = live only if RETURNGUARD_LLM=live and a key are set;
-    "cached" = never call the API (replay MOCKED, or .live.json with use_live_cache). The UI always passes "cached"."""
+    mode: passed to extract(). None / "cached" = never call the API (replay MOCKED, or .live.json with use_live_cache);
+    "live" = one API call (CLI --live only; needs ANTHROPIC_API_KEY). The UI and --all always use cached."""
     rs = load_return_state()
     if fixture is not None:
         rs = rs.model_copy(update={"status": fixture.return_status})
@@ -92,9 +96,8 @@ def run_text_case(text: str, case_id: str, config: dict, fixture: CaseFixture | 
                            mode=mode, use_live_cache=use_live_cache)
     if log is not None:
         log.append(log_record(case_id, d))
-    target = ((config["forms"].get(rep.correction.form_type) or {}).get("correction") or {}).get(
-        "corrects", rep.correction.form_type)
-    return accepted[target], d, rep
+    acc = next(a for a in accepted.values() if a.doc_id == d.evidence.accepted_doc_id)
+    return acc, d, rep
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +142,7 @@ def report(fixture: CaseFixture | None, results: list[tuple[AcceptedDocument, De
                 for src in s.sources:
                     lines.append(f"      source: {src}")
         else:
-            lines.append("  none (nothing changed)")
+            lines.append("  none (nothing was applied)")
         lines.append("")
         lines.append("Reasons:")
         for r in d.reasons:  # display only: mark change lines whose new value failed the source check
@@ -208,7 +211,9 @@ def _fixture_or_none(case_id: str) -> CaseFixture | None:
 
 
 def run_all(config: dict, log: AuditLog | None, mode: str | None = None) -> tuple[str, bool]:
-    """mode: passed to run_text_case for text cases (T12). None = CLI default; the UI passes "cached"."""
+    """Every fixture, expected vs actual. ALWAYS replays saved outputs: mode is accepted for compatibility but
+    anything other than "cached" is ignored, so --all can never call the API."""
+    mode = "cached"
     paths = sorted(CASES.glob("T*.json"), key=lambda p: int(p.stem[1:]))
     rows = [("case", "expected", "actual", "match")]
     ok = True
@@ -238,6 +243,13 @@ def run_all(config: dict, log: AuditLog | None, mode: str | None = None) -> tupl
     return text, ok
 
 
+def _short_reason(exc: BaseException) -> str:
+    """'InternalServerError: Error code: 500' -- first line only, at most 160 characters, no trailing period."""
+    first = (str(exc).strip().splitlines() or [""])[0]
+    reason = f"{type(exc).__name__}: {first}" if first else type(exc).__name__
+    return (reason[:157] + "...") if len(reason) > 160 else reason.rstrip(".")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="ReturnGuard: corrected-form review triage (SYNTHETIC data).")
     ap.add_argument("case", nargs="?", help="path to a case fixture, e.g. data/synthetic/cases/T1.json")
@@ -247,8 +259,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--case", dest="case_id", help="case id for --from-text (selects data/llm_cache/<id>.json)")
     ap.add_argument("--use-live-cache", action="store_true",
                     help="replay data/llm_cache/<case>.live.json (a recorded LIVE output) when it exists; no API call")
+    ap.add_argument("--live", action="store_true",
+                    help="with --from-text: call the API once (needs ANTHROPIC_API_KEY and requirements-llm.txt). "
+                         "Without it, saved outputs are always replayed.")
     ap.add_argument("--log", default=str(DEFAULT_LOG), help="append-only audit log path (default out/audit_log.jsonl)")
     args = ap.parse_args(argv)
+    if args.live and args.all:
+        ap.error("--live cannot be used with --all (--all always replays saved outputs)")
 
     config = load_config_default()
     log = AuditLog(args.log)
@@ -259,8 +276,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.from_text:
         case_id = args.case_id or Path(args.from_text).stem
         fx = _fixture_or_none(case_id)
-        acc, d, rep = run_text_case(Path(args.from_text).read_text(), case_id, config, fx, log,
-                                    use_live_cache=args.use_live_cache)
+        try:
+            acc, d, rep = run_text_case(Path(args.from_text).read_text(), case_id, config, fx, log,
+                                        use_live_cache=args.use_live_cache, mode="live" if args.live else "cached")
+        except Exception as exc:  # a failed live call: one line, exit 1, never a traceback
+            if not args.live:
+                raise
+            print(f"Live extraction failed: {_short_reason(exc)}. Re-run without --live to use saved outputs.",
+                  file=sys.stderr)
+            return 1
         note = grounded_note(d, load_cached_note(case_id))
         if args.json:
             print(json.dumps({"extraction_label": rep.extraction.mode_label,
@@ -276,7 +300,8 @@ def main(argv: list[str] | None = None) -> int:
     fx = load_fixture(args.case)
     if fx.case_id in LLM_TEXT_CASES:
         return main([f"--from-text={RAW / (fx.case_id + '.txt')}", "--case", fx.case_id, "--log", args.log]
-                    + (["--json"] if args.json else []) + (["--use-live-cache"] if args.use_live_cache else []))
+                    + (["--json"] if args.json else []) + (["--use-live-cache"] if args.use_live_cache else [])
+                    + (["--live"] if args.live else []))
     results = run_case(fx, config, log)
     if args.json:
         payload = [d.model_dump(mode="json") for _, d in results]

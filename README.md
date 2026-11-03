@@ -76,7 +76,8 @@ Full T1 page: [docs/screenshots/T1.png](docs/screenshots/T1.png). All cases tab:
 ## 3. How it works
 
 1. **Extract**: an LLM reads the corrected form's text into a fixed JSON schema (form type, corrected flag,
-   TIN, tax year, boxes). The schema has no status, decision or advice. By default this replays a saved output.
+   TIN, tax year, boxes). The schema has no status, decision or advice. The prompt lists the forms defined in
+   `config/forms.yaml`. By default this replays a saved output; only the CLI's `--live` flag calls the API.
 2. **Verify against the source**: code finds the one line for each box (box id + label from `config/forms.yaml`)
    and checks that the extracted amount is the amount on that line. A failure becomes `EXTRACTION_UNVERIFIED`
    and the value is never "fixed".
@@ -87,20 +88,45 @@ Full T1 page: [docs/screenshots/T1.png](docs/screenshots/T1.png). All cases tab:
    approvals stale, with SHA-256 evidence fingerprints over the fields each approval was based on.
 5. **One status**: exactly one of six statuses (priority below).
 6. **Grounded note**: an LLM may draft the reviewer note, but any number in it that is not a checked fact
-   rejects the note and a template note is used instead.
+   rejects the note and a template note is used instead. A money-formatted number (`$` or 2 decimals) must equal
+   a real amount or delta; box ids, line numbers and the tax year count only as plain numbers.
 7. **Audit log**: one append-only JSON line per decision (`out/audit_log.jsonl`, CLI only).
 
 **Status priority (first match wins):**
 `REJECTED_INVALID_INPUT` > `SPECIALIST_REVIEW` > `CONFLICT` > `DUPLICATE_NO_CHANGE` > `POSSIBLE_AMENDMENT` > `APPLY_AND_REREVIEW`
 
-Rules live in config, so adding a form or field (e.g. 1099-INT) means editing `forms.yaml` +
-`dependencies.yaml` and adding a fixture and a test, with no new Python logic.
+Rules live in config: adding a form or a field is a config and data change with **no Python change** (see below).
+A form type that `config/forms.yaml` does not define becomes `UNKNOWN_FORM_TYPE` -> `SPECIALIST_REVIEW`, never a crash.
+
+### How to add a form
+
+Example: corrected 1099-INT. `tests/test_new_form_via_config.py` does exactly these steps on a temporary copy of the
+repo and checks that every Python file in the copy is byte-identical to this repo's.
+
+1. **`config/forms.yaml`**: add the form under `forms:` with `title`, `kind` (`source`, or `correction` for a form
+   like W-2c that corrects another), `identity_fields`, `correction` (`style: reissue` or `previous_and_correct`,
+   `corrects`, `requires_corrected_flag`), `fields` (box -> `label`, `supported`), optional `unsupported_fields` and
+   `rules`. Cite the IRS source in a comment, or mark it `# UNVERIFIED`.
+2. **`config/dependencies.yaml`**: add each new approval to `approval_items`, and one edge per box under
+   `dependencies` (`"1099-INT:1"` -> `return_line`, `approval`, `source`; add `unverified: true` until checked).
+3. **`data/synthetic/accepted_<form>_C-001_2025.json`**: the accepted document a correction is compared with
+   (`"synthetic": true`, `_label`).
+4. **`data/synthetic/return_state_C-001_2025.json`**: add the approvals that rely on the new boxes (`based_on`).
+5. **`data/synthetic/cases/T<n>.json`**: a fixture with an `expected` block, then a test.
+6. Optional, for the AI path: `data/synthetic/raw/T<n>.txt` (box lines must contain the config label) and a
+   MOCKED stand-in `data/llm_cache/T<n>.json`. The live prompt picks the new form up from config automatically.
+
+Then run `python3 -m pytest -q` and `python3 cli.py --all`; the running UI picks config changes up on a page reload.
+Adding a **field** to an existing form is steps 1–2 only. If a fixture's expected result encodes the old rule
+(e.g. T15 expects box 7 to be unsupported), update that fixture and its tests in the same change.
+Not config-driven (optional, display only): the naive "did total income change?" comparison exists only for
+1099-DIV box 1a (`NAIVE_TOTAL_FIELD` in `returnguard/decide.py`).
 
 ## 4. Project layout
 
 ```
 app.py                     Streamlit review console (display only; calls cli.py's functions)
-cli.py                     command line: one case, --json, --from-text, --use-live-cache, --all
+cli.py                     command line: one case, --json, --from-text, --use-live-cache, --live, --all
 config/forms.yaml          fields + validation rules per form (IRS sources cited in comments)
 config/dependencies.yaml   field -> return line -> approval map (UNVERIFIED mappings flagged)
 returnguard/
@@ -113,7 +139,7 @@ returnguard/
   explain.py               reviewer note + number-grounding check
 data/synthetic/            SYNTHETIC inputs: accepted docs, return state, cases/T1-T15.json, raw/*.txt
 data/llm_cache/            AI outputs: *.json (MOCKED stand-ins), *.live.json (LIVE recordings)
-tests/                     pytest (341 tests)
+tests/                     pytest (364 tests)
 .streamlit/config.toml     UI theme
 docs/                      brief, project plan, v1 memo, screenshots
 ```
@@ -175,7 +201,8 @@ output, no API call this run"); all 8 checks VERIFIED; status APPLY_AND_REREVIEW
 ```bash
 python3 cli.py --all
 ```
-Every fixture: expected vs actual (table in section 7). Exits 1 on any mismatch.
+Every fixture: expected vs actual (table in section 7). Exits 1 on any mismatch. `--all` **always replays saved
+outputs**: it never calls the API, whatever is set in the environment (`--all --live` is refused).
 
 **Audit log:** the CLI appends one JSON line per decision to `out/audit_log.jsonl` (gitignored; change it with
 `--log PATH`). **The UI does not write the audit log**, because Streamlit re-runs the whole script on every
@@ -238,10 +265,13 @@ T15   SPECIALIST_REVIEW                        SPECIALIST_REVIEW                
 | T14 | No-op | Corrected, all values identical |
 | T15 | Unknown field | 1099-DIV box 7 changes |
 
-`python3 -m pytest -q` (real run, Session 5b): **`341 passed in 7.74s`**. This includes `tests/test_app_smoke.py`,
+`python3 -m pytest -q` (real run, final polish): **`364 passed in 7.05s`**. This includes `tests/test_app_smoke.py`,
 which loads `app.py` with Streamlit's `AppTest`, selects T1, T12, T5, T3 and T13, and checks every case renders
-its expected status and the All cases tab shows 15 of 15. It also checks that the UI never calls the API, even with `RETURNGUARD_LLM=live` and a key set
-(the live call is patched to fail and every page still renders).
+its expected status and the All cases tab shows 15 of 15. It also checks that the UI never calls the API, even with
+`RETURNGUARD_LLM=live` and a key set (the live call is patched to fail and every page still renders).
+`tests/test_new_form_via_config.py` adds a 1099-INT form through config on a temporary copy and runs it end to end
+(JSON, form text and `--all`) with byte-identical Python files; `tests/test_cli_live_safety.py` checks that only
+`--live` calls the API and that a failed live call is one line and exit 1.
 
 ## 8. Live AI run
 
@@ -264,18 +294,22 @@ pip install -r requirements.txt -r requirements-llm.txt
 ```
 
 ```bash
-export RETURNGUARD_LLM=live ANTHROPIC_API_KEY=your-key RETURNGUARD_LLM_MODEL=claude-haiku-5-5
+export ANTHROPIC_API_KEY=your-key
 ```
 
 ```bash
-python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1
+python3 cli.py --from-text data/synthetic/raw/T1.txt --case T1 --live
 ```
 
-`RETURNGUARD_LLM_MODEL` is optional (default `claude-haiku-5-5`). A live run overwrites `data/llm_cache/T1.live.json`;
-the MOCKED files are never touched. **Temperature is not sent**: Claude Haiku 5.5 rejects non-default
+**Only the `--live` flag calls the API**, and it also needs `ANTHROPIC_API_KEY`. `RETURNGUARD_LLM=live` on its own
+does nothing; without `--live` the CLI always replays saved outputs, and `--all` never calls the API.
+`RETURNGUARD_LLM_MODEL` is optional (default `claude-haiku-5-5`). If the call fails (no key, no SDK, network or API
+error) the CLI prints one line, `Live extraction failed: <reason>. Re-run without --live to use saved outputs.`, and
+exits 1, with no traceback and no file written. A successful live run overwrites `data/llm_cache/T1.live.json`;
+the MOCKED files are never touched. The live prompt lists the forms in `config/forms.yaml` (prompt `extract-v2`);
+the recorded T1/T4/T5 outputs above were made with the earlier `extract-v1` prompt, which named 1099-DIV and W-2c. **Temperature is not sent**: Claude Haiku 5.5 rejects non-default
 `temperature`/`top_p`/`top_k` with HTTP 400. Consistency comes from the fixed prompt and schema, the schema check,
-and code verification of every value against the source text. **The UI never calls the API**: it always replays saved outputs (`mode="cached"`), even if live mode is set
-in the environment. Live runs are CLI-only.
+and code verification of every value against the source text. **The UI never calls the API**: it always replays saved outputs (`mode="cached"`). Live runs are CLI-only (`--live`).
 
 ## 9. Implemented / mocked / deferred
 
@@ -286,9 +320,11 @@ in the environment. Live runs are CLI-only.
 | Dependency walk + stale approvals + SHA-256 evidence fingerprints | **Implemented** |
 | Six statuses, priority order, duplicate detection, new document versions | **Implemented** |
 | Source check of every AI-extracted value | **Implemented** |
-| Number-grounding check of AI reviewer notes | **Implemented** |
+| Number-grounding check of AI reviewer notes (money tokens must be real amounts or deltas) | **Implemented** |
+| New forms / fields from config only; unknown form type -> SPECIALIST_REVIEW | **Implemented** (tested with 1099-INT on a temporary copy) |
+| Live extraction only via CLI `--live`; one-line error on failure | **Implemented** |
 | Append-only audit log (CLI) | **Implemented** |
-| CLI + Streamlit UI + 341 tests | **Implemented** |
+| CLI + Streamlit UI + 364 tests | **Implemented** |
 | AI extraction for T1/T4/T5 | **LIVE** recorded outputs, replayed (no API call) |
 | AI extraction for T12, AI note for T13 | **MOCKED** (hand-written stand-ins) |
 | Return status (APPROVED / FILED) | **MOCKED** (entered by hand; labelled) |
@@ -302,8 +338,11 @@ in the environment. Live runs are CLI-only.
 - **Abbreviated box labels won't verify.** A box line must contain the label from `forms.yaml`, so a form that
   prints "Total capital gain distr." makes that box UNVERIFIED. This fails safe (to SPECIALIST_REVIEW), but it
   adds review work. Label aliases in config would fix it. Amounts also need 2 decimals to verify.
-- **The note check checks numbers, not direction.** An AI note citing only allowed numbers could still describe
-  them wrongly (e.g. "rose by 800.00"). The template note is the safe default.
+- **The note check checks numbers, not direction or pairing.** Money-formatted numbers must be real amounts or
+  deltas, but a note could still use them wrongly (e.g. "rose by 800.00", or old and new swapped), and plain numbers
+  that match an id (e.g. "4 approvals", from box 4) still pass. The template note is the safe default.
+- **Stale approvals come from `config/dependencies.yaml`**: an approval mapped there is listed as stale even if the
+  return state has no such approval (nothing cross-checks the two).
 - **IRS mappings still UNVERIFIED** (flagged `unverified: true` in `config/dependencies.yaml`, shown as dashed
   "unverified mapping" chips in the UI):
   - 1099-DIV box 1a -> Form 1040 line 3b (APR-1040-L3B)
@@ -325,7 +364,7 @@ in the environment. Live runs are CLI-only.
 - **Inside the product:** live LLM extraction was run on T1, T4 and T5 (`claude-haiku-5-5`). Every extracted
   value is checked by code against the source text line by line. The LLM cannot set a status (the schema has no
   such field). An AI-drafted note is accepted only if every number in it is a checked fact.
-- **Checking the AI's output:** 341 tests, including deliberate AI failures (T12 misread, T13 ungrounded note) and
+- **Checking the AI's output:** 364 tests, including deliberate AI failures (T12 misread, T13 ungrounded note) and
   a test that re-verifies every recorded live output against the raw text.
 - **Reused prior work:** none.
 
@@ -343,11 +382,16 @@ The first commit marks the build start.
 | Session 3: decide + audit + CLI | 11:28 PST `9c9cf9c` | 11:28 PST `cf17284` |
 | Session 4: extract + explain, follow-up, live run | 11:41 PST `cb6aba1` | 11:55 PST `1c4aebd` |
 | Session 5: UI + README | 12:05 PST `cd0255c` | 12:09 PST `30973e4` |
-| Session 5b: polish fixes | 12:23 PST `5735a04` | 12:24 PST (README + HANDOFF commit) |
+| Session 5b: polish fixes | 12:23 PST `5735a04` | 12:24 PST `0dc82ed` |
+| Session 6: fresh-eyes review (REVIEW.md) | 15:52 PST `6428456` | 16:30 PST `11dfebf` |
+| Final polish: config-driven forms, `--live`, grounding, wording | 16:45 PST `2796aec` | 16:47 PST (merge into `main`) |
 
-[RESEARCH AND MEMO TIME: filled in by Sakshi]
+**Build: 10:41–12:31 PST and 15:49–16:47 PST** (from git). I paused for about 3 hours after hitting a daily usage
+limit; there was no work and there are no commits in that gap. Build time: **about 2 h 48 min**.
 
-[TOTAL: filled in by Sakshi]
+Research, problem selection and original memo, done earlier: [RESEARCH AND MEMO TIME]
+
+Total: [TOTAL] (build time above + research and memo time)
 
 ## 13. What I'd investigate next
 

@@ -9,8 +9,9 @@ Status priority (first match wins; docs/project_plan.md §5):
   5. return status FILED                                   -> POSSIBLE_AMENDMENT
   6. otherwise                                             -> APPLY_AND_REREVIEW
 
-Statuses 1-4: every change is "proposed, not applied", no new version is created and no approval is
-marked stale. Statuses 5-6: the correction is recorded as a NEW document version and the approvals
+Statuses 1-4: every change is "proposed, not applied" (nothing was applied), no new version is created and no
+approval is marked stale. A form type that config/forms.yaml does not define gives an UNKNOWN_FORM_TYPE finding
+(SPECIALIST) instead of an error. Statuses 5-6: the correction is recorded as a NEW document version and the approvals
 it touches are listed as stale for a CPA to re-review. Status 6 also makes that version the working
 value (applied=True); status 5 does not, because the return is already filed.
 Nothing is ever approved or cleared: Decision.clears_approvals is the literal False.
@@ -29,17 +30,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from .audit import correction_fingerprint, fingerprint, new_version, with_baseline_fingerprints
 from .impact import find_impact
 from .models import AcceptedDocument, CorrectionDocument, DecisionStatus, ReturnState, ReturnStatus
-from .validate import Finding, validate
+from .validate import Finding, ValidationResult, validate
 
 S = DecisionStatus
 
 NEXT_ACTION: dict[DecisionStatus, str] = {
     S.APPLY_AND_REREVIEW: "Re-review the approvals listed in this report against the corrected document. Nothing has been approved automatically.",
     S.POSSIBLE_AMENDMENT: "Return already filed. CPA to assess whether an amended return is needed. Nothing has been changed automatically.",
-    S.CONFLICT: "Correction does not match the accepted document. Reconcile with the issuer before using it. Nothing has been changed.",
-    S.SPECIALIST_REVIEW: "Outside what this prototype handles automatically. Route to a specialist reviewer. Nothing has been changed.",
+    S.CONFLICT: "Correction does not match the accepted document. Reconcile with the issuer before using it. Nothing has been applied.",
+    S.SPECIALIST_REVIEW: "Outside what this prototype handles automatically. Route to a specialist reviewer. Nothing has been applied.",
     S.DUPLICATE_NO_CHANGE: "No new information. No action needed.",
-    S.REJECTED_INVALID_INPUT: "Input could not be trusted (see reasons). Request a valid document. Nothing has been changed.",
+    S.REJECTED_INVALID_INPUT: "Input could not be trusted (see reasons). Request a valid document. Nothing has been applied.",
 }
 
 _BLOCKING = {S.REJECTED_INVALID_INPUT, S.SPECIALIST_REVIEW, S.CONFLICT, S.DUPLICATE_NO_CHANGE}  # statuses 1-4
@@ -151,6 +152,18 @@ def naive_total_changed(accepted: AcceptedDocument, correction: CorrectionDocume
         return None
 
 
+def unknown_form_finding(form_type: str, correction_doc_id: str, accepted_doc_id: Optional[str] = None) -> Finding:
+    """UNKNOWN_FORM_TYPE (SPECIALIST): the form is not defined in config/forms.yaml, so nothing can be checked."""
+    return Finding(
+        code="UNKNOWN_FORM_TYPE",
+        category="SPECIALIST",
+        field="form_type",
+        message=(f"Form type {form_type!r} on {correction_doc_id} is not defined in config/forms.yaml, so it cannot be "
+                 "checked. Nothing was compared or applied; add the form to config or have a specialist review it."),
+        evidence={"form_type": form_type, "correction_doc_id": correction_doc_id, "accepted_doc_id": accepted_doc_id},
+    )
+
+
 def _status(findings: list[Finding], duplicate: bool, return_state: ReturnState) -> DecisionStatus:
     cats = {f.category for f in findings}
     if "INVALID" in cats:
@@ -187,7 +200,10 @@ def decide(
     extra_findings: findings from outside validate() (Session 4: EXTRACTION_UNVERIFIED from extract.py).
             They are put first and go through exactly the same category -> status rules.
     """
-    result = validate(accepted, correction, config)
+    if correction.form_type in (config.get("forms") or {}):
+        result = validate(accepted, correction, config)
+    else:  # never crash on a form config does not define: route it to a person
+        result = ValidationResult(findings=[unknown_form_finding(correction.form_type, correction.doc_id, accepted.doc_id)])
     if extra_findings:
         result = result.model_copy(update={"findings": [*extra_findings, *result.findings]})
     fp = correction_fingerprint(correction)
@@ -252,7 +268,7 @@ def decide(
         name = f"{c.form_type} box {c.field}" + (f" ({c.label})" if c.label else "")
         reasons.append(f"{name}: {c.old} -> {c.new} (delta {signed(c.delta)}){suffix}.")
     if blocked:
-        reasons.append("Nothing changed: no new document version was recorded and no approval was marked stale.")
+        reasons.append("Nothing was applied: no new document version was recorded and no approval was marked stale.")
     else:
         reasons.append(f"Correction recorded as new version {version.version} ({version.doc_id}); "
                        f"{accepted.doc_id} is kept unchanged.")

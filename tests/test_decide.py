@@ -119,7 +119,7 @@ def test_T5_conflict_nothing_changed(cfg):
     assert d.stale_approvals == []
     assert d.new_version is None
     text = " ".join(d.reasons)
-    assert "Nothing changed" in text
+    assert "Nothing was applied" in text
     assert "81000.00" in text and "82000.00" in text
     assert "SYN-W2C-C001-2025-T5" in text and "SYN-W2-C001-2025-v1" in text
     assert d.evidence.accepted_doc_id == "SYN-W2-C001-2025-v1"
@@ -132,7 +132,7 @@ def test_blocking_statuses_have_no_stale_and_say_nothing_changed(cid, cfg):
     assert d.status in BLOCKING
     assert d.stale_approvals == [] and d.new_version is None
     assert all(not c.applied and not c.applied_as_new_version for c in d.proposed_changes)
-    assert any("Nothing changed" in r for r in d.reasons)
+    assert any("Nothing was applied" in r for r in d.reasons)
 
 
 def test_T10_reason_names_field_and_bad_value(cfg):
