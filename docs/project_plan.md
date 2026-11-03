@@ -1,6 +1,6 @@
 # ReturnGuard — Current Project Plan (source of truth for the design)
 
-This is the CURRENT design. It replaces docs/memo_v1 wherever they differ.
+This is the CURRENT design. It replaces the original v1 memo wherever they differ.
 CLAUDE.md holds the rules; this file explains what we're building and why.
 Role: AI Engineer (Tax) take-home for MiraFlores AI.
 
