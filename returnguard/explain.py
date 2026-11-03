@@ -4,10 +4,14 @@
 - grounded_note(decision, llm_note): accept the LLM note only if every number in it is an allowed number;
   otherwise reject it, record the offending numbers and use template_note instead. No LLM note -> template.
 
-Allowed numbers = every amount (accepted, raw correction, old/new), every delta with and without its sign,
-the numbers inside box ids ("1b" -> 1), return line / approval ids ("Form 1040 line 3a" -> 1040, 3),
-the tax year and the numbers inside both doc IDs, plus amounts in the findings' evidence.
-Numbers are compared as Decimals, so "$1,600.00", "1600" and "1,600" are the same number.
+Two kinds of number in a note:
+- MONEY tokens (written with "$" or with exactly 2 decimals, e.g. "$800", "1,600.00") must equal a real AMOUNT
+  or DELTA from the Decision: accepted values, the correction's values / previously reported, each change's
+  old / new / delta (with and without its sign), and plain amounts in the findings' evidence (e.g. what the text shows).
+- Other numbers (no "$", no 2 decimals) may also be identifiers: numbers inside box ids ("1b" -> 1), return
+  lines / approval ids ("Form 1040 line 3a" -> 1040, 3), the tax year and the numbers in both doc IDs.
+So an identifier can never pass as money: "$3.00" or "$2,025.00" in a T1 note is rejected.
+Numbers are compared as Decimals, so "$1,600.00" and "1,600.00" are the same amount.
 The note never changes the status: explain.py only reads a Decision.
 """
 
@@ -84,8 +88,46 @@ def _add(allowed: set[Decimal], value: Any, both_signs: bool = False) -> None:
         allowed.add(abs(d))
 
 
+def _is_money(written: str) -> bool:
+    """A money-formatted token: has "$" or exactly 2 decimals ("$800", "1,600.00", "-$800.00")."""
+    return "$" in written or re.search(r"\.\d{2}$", written) is not None
+
+
+def allowed_amounts(decision: Decision) -> set[Decimal]:
+    """Real amounts and deltas only: what a money-formatted number in a note must equal."""
+    allowed: set[Decimal] = set()
+
+    def amount(v: Any) -> None:
+        if isinstance(v, Decimal):
+            allowed.add(v)
+            return
+        if v is None or not isinstance(v, str):
+            return
+        text = v.strip()
+        if re.fullmatch(r"-?\$?\s?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?", text):  # a plain amount, not an id
+            for _, d in numbers_in(text):
+                allowed.add(d)
+                allowed.add(abs(d))
+
+    ev = decision.evidence
+    for c in decision.proposed_changes:
+        amount(c.old)
+        amount(c.new)
+        amount(c.delta)
+        amount(-c.delta)
+    for v in ev.accepted_values.values():
+        amount(v)
+    for vals in ev.correction_values.values():
+        for v in vals.values():
+            amount(v)
+    for f in ev.findings:
+        for v in f.evidence.values():
+            amount(v if isinstance(v, (str, Decimal)) and not isinstance(v, bool) else None)
+    return allowed
+
+
 def allowed_numbers(decision: Decision) -> set[Decimal]:
-    """The checked facts a note may cite (see module docstring)."""
+    """Every number a note may cite as a NON-money token: amounts plus identifiers (see module docstring)."""
     allowed: set[Decimal] = set()
     ev = decision.evidence
     for c in decision.proposed_changes:
@@ -177,14 +219,16 @@ def load_cached_note(case_id: str, cache_dir: Path = CACHE_DIR) -> Optional[LLMN
 
 
 def grounded_note(decision: Decision, llm_note: Union[LLMNote, str, None] = None) -> NoteResult:
-    """Use the LLM note only if every number in it is a checked fact; else the template note."""
+    """Use the LLM note only if every number in it is a checked fact (money tokens: a real amount or delta);
+    else the template note."""
     if llm_note is None:
         return NoteResult(text=template_note(decision), source="TEMPLATE")
     if isinstance(llm_note, str):
         llm_note = LLMNote(text=llm_note)
     allowed = allowed_numbers(decision)
+    amounts = allowed_amounts(decision)
     rejected = [written.lstrip("$+").replace(",", "").replace("$", "") for written, d in numbers_in(llm_note.text)
-                if d not in allowed]
+                if d not in (amounts if _is_money(written) else allowed)]
     if rejected:
         return NoteResult(text=template_note(decision), source="TEMPLATE",
                           rejected_numbers=list(dict.fromkeys(rejected)), llm_text=llm_note.text)

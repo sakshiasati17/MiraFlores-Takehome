@@ -114,3 +114,31 @@ def test_template_T1_content(cfg):
 def test_template_T5_says_nothing_changed(cfg):
     t = template_note(decision("T5", cfg))
     assert "81000.00" in t and "82000.00" in t and "No approval was marked stale." in t
+
+
+# --- Final polish: money-formatted numbers must be real amounts or deltas -------------------------------------
+
+
+@pytest.mark.parametrize("bad", ["Qualified dividends fell by $3.00.",          # 3 is only "line 3a"
+                                 "Qualified dividends fell by $2,025.00.",      # 2025 is only the tax year
+                                 "4 approvals are stale and $4.00 moved.",      # 4 is only box 4
+                                 "Box 1b changed by 1,040.00."])               # 1040 is only "Form 1040"
+def test_ids_cannot_pass_as_money(bad, cfg):
+    r = grounded_note(decision("T1", cfg), bad)
+    assert r.source == "TEMPLATE" and r.llm_rejected
+
+
+def test_T13_note_still_rejected(cfg):
+    d = decision("T13", cfg)
+    r = grounded_note(d, load_cached_note("T13"))
+    assert r.source == "TEMPLATE" and r.rejected_numbers == ["900.00"]
+
+
+@pytest.mark.parametrize("good", [
+    "Corrected 1099-DIV SYN-1099DIV-C001-2025-T1 for tax year 2025: qualified dividends (box 1b) fell by $800.00, "
+    "from $2,400.00 to $1,600.00. Approvals APR-1040-L3A (Form 1040 line 3a) and APR-QDCG-WS need re-review.",
+    "Box 1b changed by -$800.00 (2,400.00 -> 1,600.00); box 1a stays $3,200.00.",
+])
+def test_correct_note_still_accepted(good, cfg):
+    r = grounded_note(decision("T1", cfg), good)
+    assert r.source == "LLM (MOCKED)" and r.rejected_numbers == []

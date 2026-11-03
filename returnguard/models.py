@@ -100,8 +100,12 @@ class DecisionStatus(str, Enum):
     REJECTED_INVALID_INPUT = "REJECTED_INVALID_INPUT"
 
 
-AcceptedFormType = Literal["1099-DIV", "W-2"]
-CorrectionFormType = Literal["1099-DIV", "W-2c"]
+# Form types are NOT a hard-coded list: any form defined in config/forms.yaml is accepted. The models only
+# require a non-empty name; decide.py checks the name against config and turns an unknown form into an
+# UNKNOWN_FORM_TYPE finding (SPECIALIST_REVIEW), so adding a form needs no Python change.
+FormType = Annotated[str, Field(min_length=1)]
+AcceptedFormType = FormType
+CorrectionFormType = FormType
 
 # ---------------------------------------------------------------------------
 # Documents

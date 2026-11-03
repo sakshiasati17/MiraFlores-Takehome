@@ -120,21 +120,26 @@ def test_missing_cache_is_a_clear_error_not_a_guess():
         X.extract(text("T1"), "T999")
 
 
-def test_live_mode_refused_without_env_and_key(monkeypatch):
-    with pytest.raises(X.ExtractionError, match="RETURNGUARD_LLM=live"):
+def test_live_mode_refused_without_key(monkeypatch):
+    with pytest.raises(X.ExtractionError, match="ANTHROPIC_API_KEY"):
         X.extract(text("T1"), "T1", mode="live")
-    monkeypatch.setenv("RETURNGUARD_LLM", "live")  # env set but no key: still refused, still cached by default
-    assert not X.live_enabled()
     assert X.extract(text("T1"), "T1").mode_label == "MOCKED"
+
+
+def test_env_alone_never_turns_live_on(monkeypatch):
+    """RETURNGUARD_LLM=live plus a key does nothing: only an explicit mode="live" (CLI --live) calls the API."""
+    monkeypatch.setenv("RETURNGUARD_LLM", "live")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-not-a-real-key")
+    ex = X.extract(text("T1"), "T1")  # _call_live is patched to raise (autouse fixture): any call would fail here
+    assert ex.mode_label == "MOCKED" and not ex.replayed_live
 
 
 def test_live_path_saves_labelled_live_record(monkeypatch, tmp_path):
     """The live branch with a stubbed SDK call (no network): result saved as LIVE with model + timestamp."""
-    monkeypatch.setenv("RETURNGUARD_LLM", "live")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-not-a-real-key")
     stub = json.loads((X.CACHE_DIR / "T1.json").read_text())["extraction"]
-    monkeypatch.setattr(X, "_call_live", lambda text, model: stub)
-    ex = X.extract(text("T1"), "T1", cache_dir=tmp_path)
+    monkeypatch.setattr(X, "_call_live", lambda prompt, model: stub)
+    ex = X.extract(text("T1"), "T1", mode="live", cache_dir=tmp_path)
     assert ex.mode_label == "LIVE"
     rec = json.loads((tmp_path / "T1.live.json").read_text())
     assert rec["live"] is True and rec["model"] == "claude-haiku-5-5" and rec["recorded_at"] and "mocked" not in rec
@@ -144,17 +149,16 @@ def test_live_path_saves_labelled_live_record(monkeypatch, tmp_path):
 
 def test_default_live_model_is_haiku_and_overridable(monkeypatch, tmp_path):
     assert X.DEFAULT_LIVE_MODEL == "claude-haiku-5-5"
-    monkeypatch.setenv("RETURNGUARD_LLM", "live")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-not-a-real-key")
     monkeypatch.setenv("RETURNGUARD_LLM_MODEL", "claude-sonnet-5-5")
     seen = {}
     stub = json.loads((X.CACHE_DIR / "T1.json").read_text())["extraction"]
-    monkeypatch.setattr(X, "_call_live", lambda text, model: seen.setdefault("model", model) and stub)
-    X.extract(text("T1"), "T1", cache_dir=tmp_path)
+    monkeypatch.setattr(X, "_call_live", lambda prompt, model: seen.setdefault("model", model) and stub)
+    X.extract(text("T1"), "T1", mode="live", cache_dir=tmp_path)
     assert seen["model"] == "claude-sonnet-5-5"
 
 
-def test_live_request_leaves_out_params_haiku_rejects(monkeypatch):
+def test_live_request_leaves_out_params_haiku_rejects(monkeypatch, cfg):
     """Run the real _call_live body against a fake SDK module (no network) and inspect the request."""
     import sys
     import types
@@ -171,7 +175,7 @@ def test_live_request_leaves_out_params_haiku_rejects(monkeypatch):
     fake = types.ModuleType("anthropic")
     fake.Anthropic = lambda: types.SimpleNamespace(messages=FakeMessages())
     monkeypatch.setitem(sys.modules, "anthropic", fake)
-    out = REAL_CALL_LIVE(text("T1"), "claude-haiku-5-5")  # the real request-building code, fake transport
+    out = REAL_CALL_LIVE(X.build_prompt(text("T1"), cfg), "claude-haiku-5-5")  # real request code, fake transport
     assert out == stub
     (kw,) = calls
     assert kw["model"] == "claude-haiku-5-5"

@@ -67,7 +67,7 @@ def test_t12_misread_caught():
 def test_t5_conflict():
     txt = page_text(run_case("T5"))
     assert "CONFLICT" in txt
-    assert "None. Nothing changed." in txt
+    assert "None. Nothing was applied." in txt
     assert "proposed, not applied" in txt
 
 
@@ -108,8 +108,8 @@ def test_every_case_renders_its_expected_status():
 
 
 def test_app_never_calls_the_api_even_in_live_mode(monkeypatch):
-    """RETURNGUARD_LLM=live + a key would make extract() call the model by default. The app passes mode="cached",
-    so it must still render (from the saved outputs) while the live call is patched to blow up."""
+    """Even with RETURNGUARD_LLM=live and a key in the environment, the app must never call the API: live mode needs an
+    explicit mode="live" (CLI --live), which the app never passes. The live call is patched to blow up."""
     import returnguard.extract as extract_mod
 
     def _boom(*_a, **_k):
@@ -118,7 +118,7 @@ def test_app_never_calls_the_api_even_in_live_mode(monkeypatch):
     monkeypatch.setenv("RETURNGUARD_LLM", "live")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-key-for-test")
     monkeypatch.setattr(extract_mod, "_call_live", _boom)
-    assert extract_mod.live_enabled()  # the environment really is in live mode
+    assert extract_mod.has_api_key()  # a key really is set
     for use_live in (True, False):
         txt = page_text(run_case("T1", use_live=use_live))
         assert "APPLY_AND_REREVIEW" in txt and "-800.00" in txt

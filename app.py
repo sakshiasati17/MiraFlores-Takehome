@@ -230,7 +230,7 @@ def checks_table(checks: list[FieldCheck]) -> str:
 
 def changes_table(d: Decision) -> str:
     if not d.proposed_changes:
-        return '<div class="rg-muted">Nothing changed.</div>'
+        return '<div class="rg-muted">No supported value changed. Nothing was applied.</div>'
     unverified = unverified_boxes(d)
     rows = []
     for c in d.proposed_changes:
@@ -251,7 +251,7 @@ def changes_table(d: Decision) -> str:
 
 def approvals_html(d: Decision) -> str:
     if not d.stale_approvals:
-        return '<div class="rg-muted">None. Nothing changed.</div>'
+        return '<div class="rg-muted">None. Nothing was applied.</div>'
     blocks = []
     for s in d.stale_approvals:
         paths = []

@@ -31,7 +31,7 @@ def test_T1_text_report(tmp_path):
 def test_T5_text_report(tmp_path):
     r = cli("data/synthetic/cases/T5.json", tmp_path=tmp_path)
     assert r.returncode == 0, r.stderr
-    assert "STATUS:  CONFLICT" in r.stdout and "none (nothing changed)" in r.stdout
+    assert "STATUS:  CONFLICT" in r.stdout and "none (nothing was applied)" in r.stdout
     assert "Naive check" not in r.stdout  # W-2c has no naive total defined
 
 
@@ -106,7 +106,7 @@ def test_from_text_T12_shows_both_values(tmp_path):
     out = r.stdout
     assert "EXTRACTION: MOCKED" in out
     assert "UNVERIFIED  1099-DIV:1b: extracted 1060.00 | text shows 1600.00" in out
-    assert "STATUS:  SPECIALIST_REVIEW" in out and "none (nothing changed)" in out
+    assert "STATUS:  SPECIALIST_REVIEW" in out and "none (nothing was applied)" in out
     assert "2400.00 -> 1060.00 (unverified extracted value)" in out
     assert all("(unverified extracted value)" in ln for ln in out.splitlines() if "-> 1060.00" in ln)
 

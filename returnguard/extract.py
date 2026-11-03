@@ -3,11 +3,12 @@
 AI suggests -> code verifies -> decide.py decides -> a CPA decides what to do.
 
 Modes
-- cached (default): replay data/llm_cache/<case_id>.json. Those files are labelled
+- cached (default, always unless mode="live" is passed): replay data/llm_cache/<case_id>.json. Those files are labelled
   "MOCKED: hand-written stand-in for an LLM output, not a real model call" ("mocked": true, "source":
   "hand-written", "model": null). No network, no API key, no cost. Every test runs in this mode.
-- live (optional): only when env RETURNGUARD_LLM=live AND ANTHROPIC_API_KEY is set. One call with the fixed
-  prompt below (default model claude-haiku-5-5, override with RETURNGUARD_LLM_MODEL); the SDK
+- live (optional): only when the caller passes mode="live" (the CLI's explicit --live flag) AND ANTHROPIC_API_KEY
+  is set. No environment variable switches live mode on. One call with the fixed prompt below, which lists the
+  forms defined in config/forms.yaml (default model claude-haiku-5-5, override with RETURNGUARD_LLM_MODEL); the SDK
   (requirements-llm.txt, NOT requirements.txt) is imported inside the function. The real output is recorded to
   data/llm_cache/<case_id>.live.json labelled LIVE (the hand-written MOCKED files are never overwritten).
 - use_live_cache=True: replay data/llm_cache/<case_id>.live.json (a real recorded live output, labelled LIVE)
@@ -16,7 +17,7 @@ A missing cache file with live mode off is an error, never a guess.
 
 Verification (verify_extraction)
 - For each extracted box, find the ONE text line for that box (box id at the start of the line + the box
-  label from config/forms.yaml, else _FALLBACK_LABELS) and check the extracted amount is the amount ON THAT
+  label from config/forms.yaml) and check the extracted amount is the amount ON THAT
   LINE (Decimal compare after stripping "$" and commas). W-2c: the "Previously reported" and "Correct
   information" segments of the line are checked separately.
 - The corrected flag, payer/employer TIN, tax year and form type must also appear in the text.
@@ -24,6 +25,8 @@ Verification (verify_extraction)
   and what the text shows. The extracted value is NEVER replaced by the text value: flag it, don't fix it.
 
 The schema has no status, no decision and no advice: the LLM never decides anything.
+Form types come from config/forms.yaml only: a form config does not define becomes an UNKNOWN_FORM_TYPE finding
+(SPECIALIST_REVIEW) in decide.py, never a crash.
 """
 
 from __future__ import annotations
@@ -37,14 +40,14 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Optional, Union
 
-from .decide import Decision, ProcessingState, decide
+from .decide import Decision, ProcessingState, decide, load_config
 from .models import AcceptedDocument, CorrectionDocument, ReturnState
 from .validate import Finding
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = ROOT / "data" / "llm_cache"
 
-PROMPT_VERSION = "extract-v1"
+PROMPT_VERSION = "extract-v2"  # v2: the form list comes from config/forms.yaml (v1 named 1099-DIV and W-2c)
 DEFAULT_LIVE_MODEL = "claude-haiku-5-5"  # fast, low-cost extraction; override with env RETURNGUARD_LLM_MODEL
 
 # ---------------------------------------------------------------------------
@@ -56,37 +59,40 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "required": ["form_type", "corrected", "payer_or_employer_tin", "tax_year", "fields"],
     "properties": {
-        "form_type": {"type": "string", "description": 'Form name as printed, e.g. "1099-DIV" or "W-2c".'},
-        "corrected": {"type": "boolean", "description": "True if the form is marked CORRECTED or is a W-2c."},
-        "payer_or_employer_tin": {"type": "string", "description": "Payer's TIN (1099) or employer's EIN (W-2c)."},
+        "form_type": {"type": "string", "description": "Form name as printed (one of the forms listed in the prompt)."},
+        "corrected": {"type": "boolean", "description": "True if the form is marked CORRECTED or is itself a correction form."},
+        "payer_or_employer_tin": {"type": "string", "description": "Payer's TIN or employer's EIN, as printed."},
         "tax_year": {"type": "integer"},
         "fields": {
             "type": "object",
-            "description": 'One entry per box, keyed by box id ("1a", "1b", "2a", "4", "1", "2").',
+            "description": "One entry per box, keyed by the printed box id (see the box list in the prompt).",
             "additionalProperties": {
                 "type": "object",
                 "additionalProperties": False,
                 "required": ["value"],
                 "properties": {
-                    "value": {"type": "string", "description": 'Amount exactly as printed (W-2c: "Correct information").'},
-                    "previously_reported": {"type": "string", "description": 'W-2c only: "Previously reported" amount as printed.'},
+                    "value": {"type": "string", "description": 'Amount exactly as printed ("Correct information" on forms that show both).'},
+                    "previously_reported": {"type": "string", "description": 'Only on forms that show a "Previously reported" amount.'},
                 },
             },
         },
     },
 }
 
-EXTRACTION_PROMPT = """You are reading the text of ONE corrected US tax information form (Form 1099-DIV or Form W-2c).
+EXTRACTION_PROMPT = """You are reading the text of ONE corrected US tax information form.
+The forms ReturnGuard knows (from config/forms.yaml):
+{forms}
+
 Copy what is printed into JSON that matches this JSON Schema exactly:
 
 {schema}
 
 Rules:
+- form_type is the form name as printed, e.g. {names}. If the form is none of these, still copy its name as printed.
 - Copy amounts exactly as printed (keep commas and decimals; you may drop the "$"). Do not calculate, round or fix anything.
-- Include every box that shows an amount. Box ids are the printed box numbers, e.g. "1a", "1b", "2a", "4", "1", "2".
-- For a W-2c, "value" is the "Correct information" amount and "previously_reported" is the "Previously reported" amount.
-- For a 1099-DIV, do not include "previously_reported".
-- corrected is true only if the form is marked CORRECTED (or is a Form W-2c).
+- Include every box that shows an amount. Box ids are the printed box numbers.
+- Follow the rule given for the form above for "value" and "previously_reported".
+- corrected is true only if the form is marked CORRECTED (or is itself a correction form{correction_forms}).
 - Output only the JSON object. Do not add a status, a decision, advice or any other key.
 
 Form text:
@@ -94,20 +100,74 @@ Form text:
 {text}
 >>>"""
 
-# Used only when config/forms.yaml has no label for a box.
-_FALLBACK_LABELS: dict[str, dict[str, str]] = {
-    "1099-DIV": {"1a": "Total ordinary dividends", "1b": "Qualified dividends", "2a": "Total capital gain distributions",
-                 "4": "Federal income tax withheld", "7": "Foreign tax paid"},
-    "W-2c": {"1": "Wages, tips, other compensation", "2": "Federal income tax withheld"},
-}
-# W-2c line segments ("Box 1 Wages ... | Previously reported $82,000.00 | Correct information $86,500.00").
+# W-2c-style line segments ("Box 1 Wages ... | Previously reported $82,000.00 | Correct information $86,500.00").
 _SEGMENT_LABELS = {"previously_reported": "previously reported", "value": "correct information"}
-_CORRECTED_MARKERS = [r"\[\s*x\s*\]\s*corrected\b", r"\bform\s+w-2c\b"]
+_CORRECTED_MARK = r"\[\s*x\s*\]\s*corrected\b"  # "[X] CORRECTED" on a reissued form
 _MONEY_TOKEN = re.compile(r"\$?\s?(?<![\d.])(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?!\d)")
 
 
 class ExtractionError(RuntimeError):
     """Cache missing, live mode not allowed, or an LLM output that does not match the fixed schema."""
+
+
+# ---------------------------------------------------------------------------
+# Config-driven form list (nothing form-specific is hard-coded here)
+# ---------------------------------------------------------------------------
+
+
+def default_config() -> dict:
+    return load_config(ROOT / "config" / "forms.yaml", ROOT / "config" / "dependencies.yaml")
+
+
+def correction_forms(config: dict) -> dict[str, dict]:
+    """Forms that can arrive as a correction: every form in forms.yaml with a `correction:` section."""
+    return {name: f for name, f in (config.get("forms") or {}).items() if (f or {}).get("correction")}
+
+
+def forms_for_prompt(config: dict) -> str:
+    """One line per form from config: name, title, boxes with labels, and how to fill value / previously_reported."""
+    lines = []
+    for name, f in correction_forms(config).items():
+        boxes = [f"{b} ({(d or {}).get('label', '')})" for b, d in (f.get("fields") or {}).items()]
+        boxes += [f"{b} ({label})" for b, label in (f.get("unsupported_fields") or {}).items()]
+        if (f["correction"] or {}).get("style") == "previous_and_correct":
+            how = ('each box shows "Previously reported" and "Correct information": "value" is the Correct information '
+                   'amount and "previously_reported" is the Previously reported amount')
+        else:
+            how = 'a corrected copy reissues every box: give only "value", never "previously_reported"'
+        lines.append(f"- Form {name} ({f.get('title', '')}): boxes {', '.join(boxes)}; {how}.")
+    return "\n".join(lines) or "- (no forms defined in config/forms.yaml)"
+
+
+def build_prompt(text: str, config: dict) -> str:
+    forms = correction_forms(config)
+    own = [n for n, f in forms.items() if f.get("kind") == "correction"]
+    return EXTRACTION_PROMPT.format(
+        forms=forms_for_prompt(config),
+        schema=json.dumps(EXTRACTION_SCHEMA, indent=2),
+        names=", ".join(f'"{n}"' for n in forms) or '"(none)"',
+        correction_forms=(", such as " + ", ".join(f"Form {n}" for n in own)) if own else "",
+        text=text,
+    )
+
+
+def _corrected_markers(config: dict) -> list[str]:
+    """'[X] CORRECTED', or the name of a form whose kind is `correction` in config (e.g. "Form W-2c")."""
+    names = [n for n, f in (config.get("forms") or {}).items() if (f or {}).get("kind") == "correction"]
+    return [_CORRECTED_MARK] + [rf"\bform\s+{re.escape(n)}(?![\w-])" for n in names]
+
+
+def pick_accepted(form_type: str, tin: str, accepted: Mapping[str, AcceptedDocument], config: dict) -> AcceptedDocument:
+    """The accepted document a correction is compared with: the form it corrects (from config), else the one with the
+    same payer/employer TIN, else the first. A mismatch is then reported by the checks (never guessed into a match)."""
+    if not accepted:
+        raise ExtractionError("no accepted documents to compare against")
+    fcfg = (config.get("forms") or {}).get(form_type) or {}
+    target = (fcfg.get("correction") or {}).get("corrects", form_type)
+    if target in accepted:
+        return accepted[target]
+    docs = sorted(accepted.values(), key=lambda d: d.doc_id)
+    return next((d for d in docs if d.payer_tin == tin), docs[0])
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +246,9 @@ def check_schema(obj: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def live_enabled() -> bool:
-    return os.environ.get("RETURNGUARD_LLM", "").strip().lower() == "live" and bool(os.environ.get("ANTHROPIC_API_KEY"))
+def has_api_key() -> bool:
+    """Live mode also needs a key. The key alone never turns live mode on: only mode="live" (CLI --live) does."""
+    return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 def _result(record: dict[str, Any], path: Path, replayed_live: bool = False) -> ExtractionResult:
@@ -214,8 +275,8 @@ def _result(record: dict[str, Any], path: Path, replayed_live: bool = False) -> 
     )
 
 
-def _call_live(text: str, model: str) -> dict[str, Any]:
-    """ONE call to the Claude API. Imported lazily so the core install never needs the SDK.
+def _call_live(prompt: str, model: str) -> dict[str, Any]:
+    """ONE call to the Claude API with the full prompt (build_prompt(): form list from config + form text). Imported lazily so the core install never needs the SDK.
 
     Parameters left out on purpose, because Claude Haiku 5.5 (the default model) returns HTTP 400 for them:
       - temperature / top_p / top_k (non-default sampling values are rejected), so no "temperature 0";
@@ -231,7 +292,6 @@ def _call_live(text: str, model: str) -> dict[str, Any]:
     except ImportError as exc:  # pragma: no cover - depends on the optional install
         raise ExtractionError("live mode needs the optional SDK: pip install -r requirements-llm.txt") from exc
     client = anthropic.Anthropic()
-    prompt = EXTRACTION_PROMPT.format(schema=json.dumps(EXTRACTION_SCHEMA, indent=2), text=text)
     response = client.messages.create(
         model=model,
         max_tokens=16000,
@@ -251,21 +311,22 @@ def _call_live(text: str, model: str) -> dict[str, Any]:
 
 
 def extract(text: str, case_id: str, mode: Optional[str] = None, cache_dir: Path = CACHE_DIR,
-            use_live_cache: bool = False) -> ExtractionResult:
+            use_live_cache: bool = False, config: Optional[dict] = None) -> ExtractionResult:
     """Structured fields from form text.
 
     mode None / "cached": replay data/llm_cache/<case_id>.json (MOCKED, hand-written). Default, free, offline.
         With use_live_cache=True, replay data/llm_cache/<case_id>.live.json instead when it exists (LIVE).
-    mode "live": requires RETURNGUARD_LLM=live and ANTHROPIC_API_KEY (else ExtractionError).
-    With mode None and live enabled by the environment, live is used.
+        This is ALWAYS the mode unless the caller passes mode="live"; no environment variable changes it.
+    mode "live": only when passed explicitly (CLI --live) AND ANTHROPIC_API_KEY is set (else ExtractionError).
+    config: forms.yaml + dependencies.yaml (decide.load_config); the live prompt lists its forms. Default: repo config.
     """
-    mode = (mode or ("live" if live_enabled() else "cached")).lower()
+    mode = (mode or "cached").lower()
     cache_dir = Path(cache_dir)
     if mode == "live":
-        if not live_enabled():
-            raise ExtractionError("live mode needs RETURNGUARD_LLM=live and ANTHROPIC_API_KEY set; refusing to call the API")
+        if not has_api_key():
+            raise ExtractionError("live mode needs ANTHROPIC_API_KEY set; refusing to call the API")
         model = os.environ.get("RETURNGUARD_LLM_MODEL", DEFAULT_LIVE_MODEL)
-        extraction = check_schema(_call_live(text, model))
+        extraction = check_schema(_call_live(build_prompt(text, config or default_config()), model))
         record = {
             "live": True,
             "_label": "LIVE: real model output recorded by ReturnGuard (synthetic input only)",
@@ -293,7 +354,7 @@ def extract(text: str, case_id: str, mode: Optional[str] = None, cache_dir: Path
     if not path.exists():
         raise ExtractionError(
             f"no cached extraction for case {case_id!r} at {path} and live mode is off. "
-            "Add one, or set RETURNGUARD_LLM=live with ANTHROPIC_API_KEY. ReturnGuard never guesses."
+            "Add one, or run the CLI with --live and ANTHROPIC_API_KEY set. ReturnGuard never guesses."
         )
     return _result(json.loads(path.read_text()), path)
 
@@ -323,7 +384,7 @@ def _amounts(segment: str) -> list[Decimal]:
 def box_label(config: dict, form_type: str, box: str) -> Optional[str]:
     fcfg = (config.get("forms") or {}).get(form_type) or {}
     label = ((fcfg.get("fields") or {}).get(box) or {}).get("label") or (fcfg.get("unsupported_fields") or {}).get(box)
-    return label or _FALLBACK_LABELS.get(form_type, {}).get(box)
+    return label or None
 
 
 def _box_lines(text: str, box: str, label: str) -> list[str]:
@@ -360,7 +421,7 @@ def verify_extraction(extraction: ExtractionResult, text: str, config: dict) -> 
     # Header facts --------------------------------------------------------------------------
     form_ok = re.search(rf"(?<![\w-]){re.escape(form)}(?![\w-])", text, re.IGNORECASE) is not None if form else False
     checks.append(FieldCheck("form_type", form, form if form_ok else None, form_ok, note="" if form_ok else "form name not in text"))
-    marked = any(re.search(p, text, re.IGNORECASE) for p in _CORRECTED_MARKERS)
+    marked = any(re.search(p, text, re.IGNORECASE) for p in _corrected_markers(config))
     checks.append(FieldCheck("corrected", str(extraction.corrected).lower(), str(marked).lower(), extraction.corrected == marked))
     tin = extraction.payer_or_employer_tin
     tin_lines = [ln.strip() for ln in text.splitlines() if re.search(r"\b(TIN|EIN)\b", ln) and tin and tin in ln]
@@ -456,16 +517,12 @@ def run_from_text(
     use_live_cache: bool = False,
 ) -> tuple[Decision, ExtractionReport]:
     """Full AI pipeline for one form text. accepted may be one document or {form_type: document};
-    with a mapping, the document the extracted form corrects is picked (W-2c -> W-2)."""
-    ex = extract(text, case_id, mode=mode, use_live_cache=use_live_cache)
+    with a mapping, pick_accepted() chooses the document the extracted form corrects (W-2c -> W-2, from config).
+    A form type config does not define is NOT an error here: decide() turns it into UNKNOWN_FORM_TYPE
+    (SPECIALIST_REVIEW), and its boxes cannot be verified (no labels), so nothing is applied."""
+    ex = extract(text, case_id, mode=mode, use_live_cache=use_live_cache, config=config)
     if not isinstance(accepted, AcceptedDocument):
-        fcfg = (config.get("forms") or {}).get(ex.form_type)
-        if fcfg is None:
-            raise ExtractionError(f"extracted form type {ex.form_type!r} is not defined in forms.yaml")
-        target = (fcfg.get("correction") or {}).get("corrects", ex.form_type)
-        if target not in accepted:
-            raise ExtractionError(f"no accepted {target} document to compare against")
-        accepted = accepted[target]
+        accepted = pick_accepted(ex.form_type, ex.payer_or_employer_tin, accepted, config)
     checks = verify_extraction(ex, text, config)
     findings = findings_from_checks(checks)
     correction = build_correction(ex, text, case_id, accepted, envelope)
