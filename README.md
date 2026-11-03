@@ -222,7 +222,8 @@ Everything is invented and labelled.
   2026-11-02 (`"live": true`, model, `recorded_at`).
 
 In the UI, the toggle "Use saved live AI outputs where available" (default ON) replays the `.live.json` files for
-T1/T4/T5. Everything else uses the MOCKED stand-ins. Neither option calls the API.
+T1/T4/T5. T12 uses a hand-written AI output (MOCKED); all other cases start from structured input with no AI step.
+Neither option calls the API.
 
 ## 7. Test cases
 
