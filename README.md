@@ -372,11 +372,10 @@ and code verification of every value against the source text. **The UI never cal
 
 ## 12. Time log
 
-Time spent: about 3 h 10 min on the case study itself: about 30 min of planning, plus a core
-build of about 2 h 40 min (10:41–12:24 and 15:52–16:47 PST). After that came final verification,
-repository cleanup and documentation: 16:47–17:47, plus final documentation corrections from
-20:47 to 20:57 PST. I paused for about three hours after hitting a daily usage limit and did no work
-in between.
+Time spent: about 3 h 20 min of hands-on work: about 30 min of planning, a core build of about 2 h 40 min
+(10:41–12:24 and 15:52–16:47 PST), and about 10 min of final documentation fixes. Commits continue until 17:46
+because Claude Code ran automated verification and repository cleanup during that time. I paused twice after
+hitting daily usage limits and did no work during the pauses.
 
 ## 13. What I'd investigate next
 
