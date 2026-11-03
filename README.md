@@ -372,10 +372,11 @@ and code verification of every value against the source text. **The UI never cal
 
 ## 12. Time log
 
-Time spent: about 3 h 20 min of hands-on work: about 30 min of planning, a core build of about 2 h 40 min
-(10:41–12:24 and 15:52–16:47 PST), and about 10 min of final documentation fixes. Commits continue until 17:46
-because Claude Code ran automated verification and repository cleanup during that time. I paused twice after
-hitting daily usage limits and did no work during the pauses.
+Time spent: about 4 h 30 min of working time, excluding two pauses after hitting daily usage limits
+(12:24–15:52 and 17:46–20:52 PST), during which no work was done. That is about 30 min of planning; a core build
+of about 2 h 40 min (10:41–12:24 and 15:52–16:47 PST); about 1 h of final verification, repository cleanup and
+branch tidy-up (16:47–17:46); and about 5 min of final documentation corrections in the evening, from 20:52 to the
+last commit. This is slightly over the 4-hour guide because of the final verification and documentation.
 
 ## 13. What I'd investigate next
 
