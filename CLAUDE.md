@@ -9,8 +9,7 @@ AI suggests; code verifies; a CPA decides. It never computes tax liability,
 never files anything, never clears a hold automatically.
 
 ## Source of truth
-- docs/brief.md (plain-text copy of docs/brief.docx): the MiraFlores brief. Requirements come from here.
-- docs/memo_v1.pdf: original design memo.
+- docs/project_plan.md: the current design.
 - HANDOFF.md: current state. Read it at the start of every session; update it at the end.
 
 ## Take-home rules (from the brief and the recruiter email; never break these)

@@ -1,10 +1,8 @@
 # HANDOFF — ReturnGuard
 
 > **Every session: read `docs/project_plan.md` first. It is the CURRENT design.**
-> `CLAUDE.md` holds the rules; `docs/brief.md` is the MiraFlores brief;
-> `docs/memo_v1.md` is the old v1 design (background only; project_plan.md wins where they differ).
-> `docs/brief.docx` and `docs/memo_v1.pdf` (named in CLAUDE.md) are intentionally absent from the repo.
-> Ignore them: `docs/brief.md` and `docs/project_plan.md` are the sources of truth.
+> `CLAUDE.md` holds the rules. The MiraFlores brief (MiraFlores's own material) and the outdated v1 design memo
+> were removed from the repo in the final cleanup; `docs/project_plan.md` is the source of truth for the design.
 
 ## Status after final polish. Date: 2026-11-02
 Branch `returnguard/final-polish` (from origin/main 11dfebf), merged into `main`. Commits as `sakshiasati17`.
@@ -560,6 +558,7 @@ each approval's `based_on` fields, append-only log, T7 duplicate), `cli.py`, + t
 ### Done
 - `requirements.txt` (pinned: pydantic 2.13.5, PyYAML 6.0.3, pytest 9.2.0, streamlit 1.66.1) and `.gitignore` (Python, `.env`, `out/`).
 - `docs/project_plan.md` and `docs/memo_v1.md` created verbatim from Sakshi's pasted text (explicitly allowed this session).
+  (`docs/memo_v1.md` was later removed from the repo in the final cleanup.)
 - `returnguard/models.py`: pydantic v2 models.
   - `Money` = `Decimal`, parsed by `parse_money`: non-negative, at most 2 dp, quantized to 0.01;
     rejects floats, bools, commas, letters, signs, `$`, exponents, NaN.

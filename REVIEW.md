@@ -2,6 +2,7 @@
 
 > Update after final polish (16:47 PST): findings F5, F6, F9, F10, F12 and F13 are fixed on main
 > (364 tests pass). F4 is now listed as a README limitation; F8 and F11 are unchanged.
+> Repo cleanup: `docs/brief.md` and `docs/memo_v1.md`, cited below, were removed from the repo; the written submission is sent separately.
 
 Reviewer role: a strict MiraFlores reviewer who had not seen the repo. Report only: no code, test, data or config
 changed. The only files touched are this one, a README quick-start reorder (section 10) and a short HANDOFF entry.

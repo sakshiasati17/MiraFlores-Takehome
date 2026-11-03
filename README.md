@@ -141,7 +141,7 @@ data/synthetic/            SYNTHETIC inputs: accepted docs, return state, cases/
 data/llm_cache/            AI outputs: *.json (MOCKED stand-ins), *.live.json (LIVE recordings)
 tests/                     pytest (364 tests)
 .streamlit/config.toml     UI theme
-docs/                      brief, project plan, v1 memo, screenshots
+docs/                      project plan, screenshots
 ```
 
 ## 5. CLI examples
