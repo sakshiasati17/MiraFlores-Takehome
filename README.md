@@ -84,8 +84,9 @@ Full T1 page: [docs/screenshots/T1.png](docs/screenshots/T1.png). All cases tab:
 3. **Check the correction**: identity (client, tax year, payer/employer TIN), CORRECTED flag, W-2c "previously
    reported" equals the accepted value, form rules (1b <= 1a, non-negative, 2 dp), supported fields only.
    All money is `decimal.Decimal`.
-4. **Dependency walk**: `config/dependencies.yaml` maps field -> return line -> approval. Changed fields mark
-   approvals stale, with SHA-256 evidence fingerprints over the fields each approval was based on.
+4. **Dependency walk**: `config/dependencies.yaml` maps field -> return line -> approval. The dependency walk
+   (`impact.py`) decides which approvals a changed field makes stale. SHA-256 evidence fingerprints over the fields
+   each approval was based on give before-and-after traceability; they do not decide staleness.
 5. **One status**: exactly one of six statuses (priority below).
 6. **Grounded note**: an LLM may draft the reviewer note, but any number in it that is not a checked fact
    rejects the note and a template note is used instead. A money-formatted number (`$` or 2 decimals) must equal
@@ -374,7 +375,7 @@ and code verification of every value against the source text. **The UI never cal
 Time spent: about 3 h 10 min on the case study itself: about 30 min of planning, plus a core
 build of about 2 h 40 min (10:41–12:24 and 15:52–16:47 PST). After that came final verification,
 repository cleanup and documentation: 16:47–17:47, plus final documentation corrections from
-20:47 to 20:55 PST. I paused for about three hours after hitting a daily usage limit and did no work
+20:47 to 20:57 PST. I paused for about three hours after hitting a daily usage limit and did no work
 in between.
 
 ## 13. What I'd investigate next
