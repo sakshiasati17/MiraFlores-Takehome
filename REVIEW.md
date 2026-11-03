@@ -1,5 +1,8 @@
 # REVIEW — Session 6 fresh-eyes review (ReturnGuard)
 
+> Update after final polish (16:47 PST): findings F5, F6, F9, F10, F12 and F13 are fixed on main
+> (364 tests pass). F4 is now listed as a README limitation; F8 and F11 are unchanged.
+
 Reviewer role: a strict MiraFlores reviewer who had not seen the repo. Report only: no code, test, data or config
 changed. The only files touched are this one, a README quick-start reorder (section 10) and a short HANDOFF entry.
 Date: 2026-11-02. Reviewed commit: `main` @ `0dc82ed`. Python 3.13.18, Linux.
