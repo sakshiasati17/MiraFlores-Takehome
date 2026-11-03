@@ -8,6 +8,7 @@ Date: 2026-11-02. Reviewed commit: `main` @ `0dc82ed`. Python 3.13.18, Linux.
 
 **PASS for the prototype.** A clean clone of `main` installs, and all 341 tests pass. All 15 cases match their expected status, deltas and stale approvals. The UI renders every demo case correctly, and no API key or network is needed.
 Safety holds under my own checks: 24 decisions checked, 0 with `clears_approvals` True, and the UI makes 0 API calls even in live mode with a key set.
+A full read of `main` adds two caveats: a new *form* needs a 2-line Python change (F10), and the AI-note number check is loose (F9).
 **Not ready to submit as-is:** `docs/writeup.md` (the ≤4-page explanation) is not in the repo. The GitHub default branch still serves an older
 version, and the README time totals are still placeholders.
 
@@ -168,6 +169,33 @@ Server stopped after each run. The browser check was complete, so no fallback wa
   `2a Total capital gain distr.`, which would not verify against the config label. The raw `*.txt` files use full labels.
   The README already lists this limitation.
 
+### Findings from a full read of `main` (every source file, config, data file and test; added after the first push)
+- **F9. The note check accepts numbers that happen to equal an ID.** Allowed numbers include those inside box ids, line
+  names and doc IDs. For T1, `grounded_note` ACCEPTS "Qualified dividends fell by $3.00; 4 approvals are stale." and
+  "fell by $2,025.00." (3 is from "line 3a", 4 from box 4, 2025 from the tax year), while "$1,000.00" is correctly rejected.
+  Low exposure today, because the only AI note is the hand-written T13 stand-in and the template is the default. The README limitation
+  ("checks numbers, not direction") understates it.
+- **F10. A NEW FORM needs a Python change. A new FIELD does not.** `returnguard/models.py:103-104` hard-codes
+  `AcceptedFormType = Literal["1099-DIV", "W-2"]` and `CorrectionFormType = Literal["1099-DIV", "W-2c"]`. With a
+  1099-INT entry added only in `forms.yaml`, both models reject `form_type="1099-INT"`. After adding `"1099-INT"` to those two
+  Literals (2 lines), plus config, an accepted doc and a fixture, a T16 1099-INT case ran end to end (APPLY_AND_REREVIEW, +50.00,
+  stale APR-1040-L2B). Other form-specific Python: the extraction prompt names only 1099-DIV / W-2c (`extract.py`),
+  `_FALLBACK_LABELS` (`extract.py`), `NAIVE_TOTAL_FIELD` (`decide.py:49`), and the naive card only for 1099-DIV (`app.py:162`).
+  This contradicts README §3 and the `forms.yaml` header ("adding a form ... e.g. 1099-INT ... no new Python logic").
+- **F11. Fingerprints are evidence, not the trigger.** `decide()` marks approvals stale purely from the `dependencies.yaml` walk.
+  SHA-256 fingerprints are computed and reported (before/after) but don't decide staleness, and `audit.is_stale()` is never called
+  by the pipeline. The README wording ("mark approvals stale, with SHA-256 evidence fingerprints") is accurate but easy to misread.
+- **F12. `cli.py --all` follows the shell's live setting.** With `RETURNGUARD_LLM=live` and a key exported, `python3 cli.py --all`
+  makes a real API call for T12 and writes `data/llm_cache/T12.live.json`. If the model reads 1b correctly, T12 then shows MISMATCH
+  (by design T12 must catch a misread). Unset the variables before demoing `--all`.
+- **F13. An unexpected form type from the AI stops with an error.** If an extraction returns a form type not in `forms.yaml` or
+  not in the model Literals, `run_from_text` / pydantic raise instead of producing a SPECIALIST_REVIEW decision. That fails safe
+  (nothing applied), but it isn't graceful.
+- **Live-case good news.** The running UI picks up config edits on a page reload, with no restart. Tested on a copy: after
+  making box 7 supported, T15 showed APPLY_AND_REREVIEW with APR-SCH3-L1, and the All cases tab showed "14 of 15" with T15 MISMATCH until
+  the fixture's expected block is updated. Every value shown in the UI is passed through `html.escape`.
+- No test is skipped or xfailed (`pytest -rs`: 341 passed, 0 skipped).
+
 ## 6. Brief compliance (STEP 5)
 
 | Brief requirement | Verdict | Proof |
@@ -218,7 +246,7 @@ the factual claims in **README.md** instead (the reviewer-facing claims). Sectio
 | 11 | CLI appends one JSON line per decision | VERIFIED | `--all --log` wrote 16 lines (15 cases + T7's second), +1 for one more T1; records carry `clears_approvals: false` |
 | 12 | UI does not write the audit log | VERIFIED (code) | `app.py` passes `log=None` / `None` to every `cli` call |
 | 13 | Status priority order | VERIFIED (by behaviour) | All 15 fixtures match. Order also printed at top of `decide.py` |
-| 14 | Adding a form/field = config + fixture + test, no new Python | PARTLY VERIFIED | Adding a *field* to an existing form worked config-only (F3). Adding a whole new *form* was not tried. Existing tests must be updated (F3). |
+| 14 | Adding a form/field = config + fixture + test, no new Python | **PARTLY FALSE** | A new *field* on an existing form is config-only (F3). A new *form* (1099-INT) needs 2 lines in `models.py` (F10), and the extraction prompt for text input. Existing tests must be updated either way (F3). |
 | 15 | 341 tests; `test_app_smoke.py` checks UI never calls the API | VERIFIED | Section 3; and my own listener check (section 4) |
 | 16 | Live run on 2026-11-02 with claude-haiku-5-5 for T1/T4/T5, 8/8, 6/6, 6/6 VERIFIED | Recordings VERIFIED; the API call itself UNVERIFIABLE | Files carry `live: true`, model, timestamps, and every value re-verifies against the raw text (CLI replay). I can't prove a real call was made. |
 | 17 | Claude Haiku 5.5 returns HTTP 400 for non-default temperature | UNVERIFIED | No key in this review |
@@ -271,10 +299,13 @@ fails on uncommitted `data/` edits (I saw the same thing with `config/`, F3).
 1. **A reviewer clones without `-b` and gets old code (F1).** The default branch `returnguard-setup` lacks Session 5b.
    *Handle:* before submitting, set the GitHub default branch to `main` (Settings → General → Default branch) or delete
    `returnguard-setup`. In the demo, say "clone with `-b main`" up front.
-2. **The live requirement change turns tests red (F3).** Supporting a new box is config-only, but 10 tests fail until the T15
-   expectation and the related tests are updated, and the git-clean test fails until you commit.
-   *Handle:* say in advance which tests encode the old rule and why they should change. Update the fixture's `expected`
-   block and those tests in the same change, commit, then show `python3 -m pytest -q` green. Point out that no Python changed.
+2. **The live requirement change: tests go red, and a new form needs Python (F3, F10).** Supporting a new box is config-only,
+   but 10 tests fail until the T15 expectation and related tests are updated, and the git-clean test fails until you commit.
+   A new form (e.g. 1099-INT) also needs `"1099-INT"` added to the two Literals in `returnguard/models.py:103-104`.
+   *Handle:* don't claim "no Python" for a new form. Say up front: "a new field is config-only; a new form is config plus
+   one line each in two type lists." Recipe tested on a copy: `forms.yaml` entry + `dependencies.yaml` edge (+ `approval_items`) +
+   `data/synthetic/accepted_<form>_C-001_2025.json` + the models.py Literals + a `cases/T16.json` fixture. Then update the
+   tests that encode the old rule, commit, and show `python3 -m pytest -q` green. The UI picks up config on reload (no restart).
    Be ready for "the new approval isn't in the return state" (F4).
 3. **Being asked to "run the AI live" (F5).** Live mode needs a key and network, and an API error prints a raw traceback.
    *Handle:* demo with `--use-live-cache` (LIVE recordings, no call) and explain the recorded run plus the source checks.
