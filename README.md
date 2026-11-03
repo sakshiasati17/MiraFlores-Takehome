@@ -17,7 +17,7 @@ Take-home prototype for MiraFlores AI (AI Engineer, Tax). **Synthetic data only.
 
 Requires **Python 3.11+ (tested on 3.13)**. No API key, no network, no paid service.
 
-Clone with `-b main`: `main` is the source of truth (the repository's GitHub default branch is currently an older setup branch).
+Clone with `-b main`: `main` is the source of truth.
 
 ```bash
 git clone -b main https://github.com/sakshiasati17/MiraFlores-Takehome.git
@@ -54,7 +54,7 @@ streamlit run app.py
 ```
 
 Dependencies (`requirements.txt`, pinned): pydantic 2.13.5, PyYAML 6.0.3, pytest 9.2.0, streamlit 1.66.1.
-`requirements-llm.txt` (the `anthropic` SDK) is optional and only needed for live AI extraction (section 9).
+`requirements-llm.txt` (the `anthropic` SDK) is optional and only needed for live AI extraction (section 8).
 
 ## 2. Demo path (15 minutes)
 
@@ -386,12 +386,12 @@ The first commit marks the build start.
 | Session 6: fresh-eyes review (REVIEW.md) | 15:52 PST `6428456` | 16:30 PST `11dfebf` |
 | Final polish: config-driven forms, `--live`, grounding, wording | 16:45 PST `2796aec` | 16:47 PST (merge into `main`) |
 
-**Build: 10:41–12:31 PST and 15:49–16:47 PST** (from git). I paused for about 3 hours after hitting a daily usage
-limit; there was no work and there are no commits in that gap. Build time: **about 2 h 48 min**.
+**Build commits: 10:41–12:24 PST and 15:52–16:47 PST** (git times), about **2 h 40 min**. I paused for about 3 hours
+after hitting a daily usage limit; there was no work in between.
 
-Research, problem selection and original memo, done earlier: [RESEARCH AND MEMO TIME]
+Research, problem selection and original memo, done earlier: about [RESEARCH AND MEMO TIME] hours.
 
-Total: [TOTAL] (build time above + research and memo time)
+Total: about [TOTAL] hours.
 
 ## 13. What I'd investigate next
 

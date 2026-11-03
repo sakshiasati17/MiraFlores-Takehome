@@ -1,4 +1,4 @@
 # OPTIONAL (Session 4): only for live LLM extraction. NOT needed for the core install, the CLI's default
-# MOCKED mode, or any test. Live mode also needs RETURNGUARD_LLM=live and ANTHROPIC_API_KEY.
+# MOCKED mode, or any test. Live mode needs the CLI --live flag and ANTHROPIC_API_KEY (RETURNGUARD_LLM is no longer used).
 #   pip install -r requirements.txt -r requirements-llm.txt
 anthropic>=0.70

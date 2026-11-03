@@ -428,7 +428,7 @@ def main() -> None:
         st.caption(fixture(case_id).description)
         use_live = st.toggle("Use saved live AI outputs where available", value=True, key="use_live")
         st.caption("ON: T1, T4, T5 replay their recorded LIVE outputs (no API call). "
-                   "Everything else uses hand-written stand-ins (MOCKED).")
+                   "T12 uses a hand-written AI output (MOCKED); all other cases start from structured input with no AI step.")
         st.markdown("---")
         st.info("**About**  \nSynthetic data only. Not tax advice. Decisions require CPA review.")
 
