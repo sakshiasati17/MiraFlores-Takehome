@@ -390,9 +390,9 @@ The first commit marks the build start.
 **Build commits: 10:41–12:24 PST and 15:52–16:47 PST** (git times), about **2 h 40 min**. I paused for about 3 hours
 after hitting a daily usage limit; there was no work in between.
 
-Research, problem selection and original memo, done earlier: about [RESEARCH AND MEMO TIME] hours.
+Research, problem selection and original memo, done earlier: about 0.5 hours.
 
-Total: about [TOTAL] hours.
+Total: about 3.2 hours.
 
 ## 13. What I'd investigate next
 
